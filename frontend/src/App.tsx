@@ -1,4 +1,4 @@
-import { ArrowLeft, Bell, BellOff, ExternalLink, Home, Mail, MapPin, Newspaper, Phone, Share2 } from 'lucide-react';
+import { ArrowLeft, Bell, BellOff, Download, ExternalLink, Home, Mail, MapPin, Newspaper, Phone, Share2, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { fetchObituaries, fetchObituary, fetchPublicConfig } from './api';
 import { disablePushNotifications, enablePushNotifications, getCurrentSubscription, supportsPush } from './push';
@@ -9,6 +9,13 @@ type Route =
   | { name: 'obituaries' }
   | { name: 'detail'; id: string }
   | { name: 'contact' };
+
+type InstallPlatform = 'ios' | 'android' | 'windows' | 'other';
+
+type BeforeInstallPromptEvent = Event & {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
+};
 
 function parseRoute(): Route {
   const hash = window.location.hash.replace(/^#\/?/, '');
@@ -41,6 +48,28 @@ function go(path: string) {
   window.location.hash = path;
 }
 
+function detectInstallPlatform(): InstallPlatform {
+  const userAgent = navigator.userAgent || '';
+  const isTouchMac = navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1;
+
+  if (/iPad|iPhone|iPod/.test(userAgent) || isTouchMac) {
+    return 'ios';
+  }
+  if (/Android/i.test(userAgent)) {
+    return 'android';
+  }
+  if (/Windows/i.test(userAgent)) {
+    return 'windows';
+  }
+
+  return 'other';
+}
+
+function isAppStandalone(): boolean {
+  const nav = navigator as Navigator & { standalone?: boolean };
+  return window.matchMedia('(display-mode: standalone)').matches || nav.standalone === true;
+}
+
 function App() {
   const [route, setRoute] = useState<Route>(parseRoute);
   const [config, setConfig] = useState<PublicConfig | null>(null);
@@ -49,6 +78,10 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [notice, setNotice] = useState('');
   const [pushEnabled, setPushEnabled] = useState(false);
+  const [installPlatform, setInstallPlatform] = useState<InstallPlatform>('other');
+  const [isStandalone, setIsStandalone] = useState(false);
+  const [installHelpOpen, setInstallHelpOpen] = useState(false);
+  const [deferredInstallPrompt, setDeferredInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
 
   useEffect(() => {
     const onHashChange = () => setRoute(parseRoute());
@@ -73,6 +106,29 @@ function App() {
     getCurrentSubscription()
       .then((subscription) => setPushEnabled(Boolean(subscription)))
       .catch(() => setPushEnabled(false));
+  }, []);
+
+  useEffect(() => {
+    setInstallPlatform(detectInstallPlatform());
+    setIsStandalone(isAppStandalone());
+
+    const onBeforeInstallPrompt = (event: Event) => {
+      event.preventDefault();
+      setDeferredInstallPrompt(event as BeforeInstallPromptEvent);
+    };
+    const onAppInstalled = () => {
+      setDeferredInstallPrompt(null);
+      setIsStandalone(true);
+      setNotice("L'application est installée sur cet appareil.");
+    };
+
+    window.addEventListener('beforeinstallprompt', onBeforeInstallPrompt);
+    window.addEventListener('appinstalled', onAppInstalled);
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', onBeforeInstallPrompt);
+      window.removeEventListener('appinstalled', onAppInstalled);
+    };
   }, []);
 
   useEffect(() => {
@@ -103,6 +159,39 @@ function App() {
       }
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Impossible d'activer les notifications.");
+    }
+  }
+
+  async function handleInstallClick() {
+    setNotice('');
+    const platform = detectInstallPlatform();
+    setInstallPlatform(platform);
+
+    if (isAppStandalone()) {
+      setIsStandalone(true);
+      setNotice("L'application est déjà installée sur cet appareil.");
+      return;
+    }
+
+    if (platform === 'ios') {
+      setInstallHelpOpen(true);
+      return;
+    }
+
+    if (!deferredInstallPrompt) {
+      setInstallHelpOpen(true);
+      return;
+    }
+
+    const prompt = deferredInstallPrompt;
+    setDeferredInstallPrompt(null);
+    await prompt.prompt();
+    const choice = await prompt.userChoice;
+
+    if (choice.outcome === 'accepted') {
+      setNotice("L'installation de l'application est lancée.");
+    } else {
+      setNotice("L'installation a ete annulee.");
     }
   }
 
@@ -137,7 +226,7 @@ function App() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-5xl px-4 pb-24 pt-5">
+      <main className="mx-auto max-w-5xl px-4 pb-32 pt-5">
         {notice ? (
           <div className="mb-4 rounded border border-line bg-white px-4 py-3 text-sm text-ink shadow-soft">{notice}</div>
         ) : null}
@@ -149,6 +238,15 @@ function App() {
             config={config}
             pushEnabled={pushEnabled}
             onTogglePush={togglePush}
+            installLabel={
+              isStandalone
+                ? 'Application installée'
+                : installPlatform === 'ios'
+                  ? 'Voir comment installer'
+                  : "Télécharger l'application"
+            }
+            installDisabled={isStandalone}
+            onInstallClick={handleInstallClick}
           />
         ) : null}
 
@@ -162,12 +260,16 @@ function App() {
       </main>
 
       <footer className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-white safe-bottom">
-        <div className="mx-auto grid max-w-5xl grid-cols-3 gap-1 px-3 pt-2">
+        <div className="mx-auto grid max-w-5xl grid-cols-3 gap-2 px-5 pt-3">
           <BottomButton active={route.name === 'home'} label="Accueil" icon={<Home size={20} />} onClick={() => go('/')} />
           <BottomButton active={route.name === 'obituaries' || route.name === 'detail'} label="Avis" icon={<Newspaper size={20} />} onClick={() => go('/avis')} />
           <BottomButton active={route.name === 'contact'} label="Contact" icon={<Phone size={20} />} onClick={() => go('/contact')} />
         </div>
       </footer>
+
+      {installHelpOpen ? (
+        <InstallHelpDialog platform={installPlatform} onClose={() => setInstallHelpOpen(false)} />
+      ) : null}
     </div>
   );
 }
@@ -175,7 +277,7 @@ function App() {
 function BottomButton({ active, label, icon, onClick }: { active: boolean; label: string; icon: React.ReactNode; onClick: () => void }) {
   return (
     <button
-      className={`flex min-h-12 flex-col items-center justify-center rounded px-2 text-xs font-medium ${
+      className={`flex min-h-12 flex-col items-center justify-center rounded-md px-2 text-xs font-medium ${
         active ? 'bg-cedar text-white' : 'text-ink'
       }`}
       onClick={onClick}
@@ -191,13 +293,19 @@ function HomePage({
   loading,
   config,
   pushEnabled,
-  onTogglePush
+  onTogglePush,
+  installLabel,
+  installDisabled,
+  onInstallClick
 }: {
   latest: Obituary[];
   loading: boolean;
   config: PublicConfig | null;
   pushEnabled: boolean;
   onTogglePush: () => void;
+  installLabel: string;
+  installDisabled: boolean;
+  onInstallClick: () => void;
 }) {
   return (
     <div className="space-y-7">
@@ -214,6 +322,14 @@ function HomePage({
           >
             {pushEnabled ? <BellOff size={20} /> : <Bell size={20} />}
             {pushEnabled ? 'Desactiver les notifications' : 'Activer les notifications'}
+          </button>
+          <button
+            className="inline-flex min-h-12 items-center justify-center gap-2 rounded border border-cedar bg-paper px-5 font-semibold text-cedar disabled:cursor-default disabled:opacity-70"
+            onClick={onInstallClick}
+            disabled={installDisabled}
+          >
+            <Download size={20} />
+            {installLabel}
           </button>
           <a
             className="inline-flex min-h-12 items-center justify-center gap-2 rounded border border-line bg-paper px-5 font-semibold text-ink"
@@ -234,6 +350,66 @@ function HomePage({
         </div>
         <ObituaryList items={latest} loading={loading} compact />
       </section>
+    </div>
+  );
+}
+
+function InstallHelpDialog({ platform, onClose }: { platform: InstallPlatform; onClose: () => void }) {
+  const isIos = platform === 'ios';
+  const title = isIos ? 'Installer sur iPhone' : "Installer l'application";
+  const steps = isIos
+    ? [
+        'Ouvrez cette page dans Safari.',
+        'Touchez le bouton Partager dans la barre du bas.',
+        'Choisissez Ajouter à l’écran d’accueil.',
+        'Touchez Ajouter, puis ouvrez McConnery depuis l’icône créée.'
+      ]
+    : platform === 'windows'
+      ? [
+          'Dans Chrome ou Edge, cliquez sur l’icône d’installation dans la barre d’adresse.',
+          'Si elle n’apparaît pas, ouvrez le menu du navigateur.',
+          'Choisissez Installer l’application, puis confirmez.'
+        ]
+      : [
+          'Dans Chrome, touchez le menu du navigateur.',
+          'Choisissez Installer l’application ou Ajouter à l’écran d’accueil.',
+          'Confirmez, puis ouvrez McConnery depuis l’icône créée.'
+        ];
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end bg-ink/45 px-4 py-5 sm:items-center sm:justify-center" role="dialog" aria-modal="true" aria-labelledby="install-help-title">
+      <div className="w-full max-w-md rounded border border-line bg-white p-5 shadow-soft">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-sm font-semibold uppercase tracking-wide text-rosewood">Application</p>
+            <h2 id="install-help-title" className="mt-1 text-2xl font-semibold">{title}</h2>
+          </div>
+          <button className="rounded p-2 text-cedar" onClick={onClose} aria-label="Fermer">
+            <X size={22} />
+          </button>
+        </div>
+
+        <ol className="mt-5 space-y-3 text-base leading-7 text-ink/80">
+          {steps.map((step, index) => (
+            <li key={step} className="flex gap-3">
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded bg-cedar text-sm font-semibold text-white">
+                {index + 1}
+              </span>
+              <span>{step}</span>
+            </li>
+          ))}
+        </ol>
+
+        {isIos ? (
+          <p className="mt-5 rounded border border-line bg-paper p-3 text-sm leading-6 text-ink/75">
+            Sur iPhone, les notifications fonctionnent après l’installation de la PWA sur l’écran d’accueil.
+          </p>
+        ) : null}
+
+        <button className="mt-5 inline-flex min-h-12 w-full items-center justify-center rounded bg-cedar px-5 font-semibold text-white" onClick={onClose}>
+          Compris
+        </button>
+      </div>
     </div>
   );
 }
@@ -357,9 +533,9 @@ function ContactPage({ config }: { config: PublicConfig | null }) {
 
 function ContactLine({ icon, label, href }: { icon: React.ReactNode; label: string; href?: string }) {
   const content = (
-    <span className="flex items-start gap-3">
-      <span className="mt-1 text-cedar">{icon}</span>
-      <span>{label}</span>
+    <span className="flex min-w-0 items-start gap-3">
+      <span className="mt-1 shrink-0 text-cedar">{icon}</span>
+      <span className="contact-line-label min-w-0">{label}</span>
     </span>
   );
 

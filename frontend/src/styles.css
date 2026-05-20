@@ -23,6 +23,13 @@ a {
   margin-bottom: 1rem;
 }
 
+.contact-line-label {
+  overflow-wrap: anywhere;
+  word-break: normal;
+  line-height: 1.35;
+}
+
 .safe-bottom {
-  padding-bottom: max(1rem, env(safe-area-inset-bottom));
+  padding-bottom: 1.5rem;
+  padding-bottom: max(1.5rem, calc(env(safe-area-inset-bottom) + 0.75rem));
 }

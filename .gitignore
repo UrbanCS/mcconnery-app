@@ -1,0 +1,11 @@
+node_modules/
+dist/
+vendor/
+.env
+.DS_Store
+Thumbs.db
+backend/config/config.php
+backend/migration/config.php
+backend/logs/*.log
+backend/migration/output/*
+!backend/migration/output/.gitkeep

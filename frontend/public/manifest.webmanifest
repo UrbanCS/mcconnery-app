@@ -1,0 +1,19 @@
+{
+  "name": "Maison Funeraire McConnery",
+  "short_name": "McConnery",
+  "description": "Avis de deces et notifications de Maison Funeraire McConnery.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f7f5f2",
+  "theme_color": "#47665a",
+  "lang": "fr-CA",
+  "icons": [
+    {
+      "src": "./icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

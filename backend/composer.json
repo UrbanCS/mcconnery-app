@@ -1,0 +1,22 @@
+{
+  "name": "mcconnery/pwa-backend",
+  "description": "PHP backend for McConnery PWA notifications and obituary feed.",
+  "type": "project",
+  "require": {
+    "php": ">=8.0",
+    "ext-json": "*",
+    "ext-pdo": "*",
+    "ext-simplexml": "*",
+    "ext-dom": "*",
+    "minishlink/web-push": "^9.0"
+  },
+  "autoload": {
+    "files": [
+      "lib/dates.php",
+      "lib/http.php",
+      "lib/database.php",
+      "lib/obituaries.php",
+      "lib/push.php"
+    ]
+  }
+}

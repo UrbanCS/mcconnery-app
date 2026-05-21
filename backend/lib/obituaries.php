@@ -163,8 +163,9 @@ function list_obituaries(int $limit = 20): array
     $stmt = db()->prepare(
         'SELECT id, source_id, source_url, title, person_name, excerpt, image_url, death_date, published_at, created_at
          FROM obituary_snapshots
-         ORDER BY CASE WHEN published_at IS NULL AND death_date IS NULL THEN 1 ELSE 0 END ASC,
-                  COALESCE(published_at, death_date) DESC,
+         ORDER BY CASE WHEN death_date IS NULL THEN 1 ELSE 0 END ASC,
+                  death_date DESC,
+                  published_at DESC,
                   CAST(source_id AS UNSIGNED) DESC,
                   created_at DESC,
                   id DESC

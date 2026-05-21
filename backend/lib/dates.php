@@ -5,6 +5,7 @@ declare(strict_types=1);
 function normalize_french_date(string $value): string
 {
     $value = trim($value);
+    $value = function_exists('mb_strtolower') ? mb_strtolower($value, 'UTF-8') : strtolower($value);
     $map = [
         'lun,' => 'Mon,',
         'mar,' => 'Tue,',

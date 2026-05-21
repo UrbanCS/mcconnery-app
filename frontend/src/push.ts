@@ -38,7 +38,7 @@ export async function enablePushNotifications(): Promise<PushSubscription> {
 
   const permission = await Notification.requestPermission();
   if (permission !== 'granted') {
-    throw new Error("La permission de notifications n'a pas ete accordee.");
+    throw new Error("La permission de notifications n'a pas été accordée.");
   }
 
   const config = await fetchPublicConfig();

@@ -16,7 +16,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const payload = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    const message = typeof payload?.error === 'string' ? payload.error : 'La requete a echoue.';
+    const message = typeof payload?.error === 'string' ? payload.error : 'La requête a échoué.';
     throw new Error(message);
   }
 

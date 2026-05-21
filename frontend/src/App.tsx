@@ -139,7 +139,7 @@ function App() {
     setLoading(true);
     fetchObituary(route.id)
       .then(setSelected)
-      .catch((error) => setNotice(error instanceof Error ? error.message : "L'avis demande n'a pas ete trouve."))
+      .catch((error) => setNotice(error instanceof Error ? error.message : "L'avis demandé n'a pas été trouvé."))
       .finally(() => setLoading(false));
   }, [route]);
 
@@ -151,11 +151,11 @@ function App() {
       if (pushEnabled) {
         await disablePushNotifications();
         setPushEnabled(false);
-        setNotice('Les notifications sont desactivees sur cet appareil.');
+        setNotice('Les notifications sont désactivées sur cet appareil.');
       } else {
         await enablePushNotifications();
         setPushEnabled(true);
-        setNotice('Les notifications sont activees sur cet appareil.');
+        setNotice('Les notifications sont activées sur cet appareil.');
       }
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Impossible d'activer les notifications.");
@@ -191,7 +191,7 @@ function App() {
     if (choice.outcome === 'accepted') {
       setNotice("L'installation de l'application est lancée.");
     } else {
-      setNotice("L'installation a ete annulee.");
+      setNotice("L'installation a été annulée.");
     }
   }
 
@@ -211,7 +211,7 @@ function App() {
           <button className="flex min-h-11 items-center gap-3 text-left" onClick={() => go('/')}>
             <span className="flex h-10 w-10 items-center justify-center rounded bg-cedar text-lg font-semibold text-white">M</span>
             <span>
-              <span className="block text-sm font-semibold leading-tight">Maison Funeraire</span>
+              <span className="block text-sm font-semibold leading-tight">Maison Funéraire</span>
               <span className="block text-lg font-semibold leading-tight">McConnery</span>
             </span>
           </button>
@@ -219,7 +219,7 @@ function App() {
             <button className="rounded p-3 text-cedar" aria-label="Accueil" onClick={() => go('/')}>
               <Home size={21} />
             </button>
-            <button className="rounded p-3 text-cedar" aria-label="Avis de deces" onClick={() => go('/avis')}>
+            <button className="rounded p-3 text-cedar" aria-label="Avis de décès" onClick={() => go('/avis')}>
               <Newspaper size={21} />
             </button>
           </nav>
@@ -310,10 +310,10 @@ function HomePage({
   return (
     <div className="space-y-7">
       <section className="rounded border border-line bg-white p-5 shadow-soft">
-        <p className="text-sm font-semibold uppercase tracking-wide text-rosewood">Avis de deces</p>
-        <h1 className="mt-2 text-3xl font-semibold leading-tight">Maison Funeraire McConnery</h1>
+        <p className="text-sm font-semibold uppercase tracking-wide text-rosewood">Avis de décès</p>
+        <h1 className="mt-2 text-3xl font-semibold leading-tight">Maison Funéraire McConnery</h1>
         <p className="mt-3 max-w-2xl text-base leading-7 text-ink/75">
-          Consultez les avis recents et activez les notifications pour etre avise lorsqu'un nouvel avis est publie.
+          Consultez les avis récents et activez les notifications pour être avisé lorsqu'un nouvel avis est publié.
         </p>
         <div className="mt-5 flex flex-col gap-3 sm:flex-row">
           <button
@@ -321,7 +321,7 @@ function HomePage({
             onClick={onTogglePush}
           >
             {pushEnabled ? <BellOff size={20} /> : <Bell size={20} />}
-            {pushEnabled ? 'Desactiver les notifications' : 'Activer les notifications'}
+            {pushEnabled ? 'Désactiver les notifications' : 'Activer les notifications'}
           </button>
           <button
             className="inline-flex min-h-12 items-center justify-center gap-2 rounded border border-cedar bg-paper px-5 font-semibold text-cedar disabled:cursor-default disabled:opacity-70"

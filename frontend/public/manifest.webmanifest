@@ -1,7 +1,7 @@
 {
-  "name": "Maison Funeraire McConnery",
+  "name": "Maison Funéraire McConnery",
   "short_name": "McConnery",
-  "description": "Avis de deces et notifications de Maison Funeraire McConnery.",
+  "description": "Avis de décès et notifications de Maison Funéraire McConnery.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

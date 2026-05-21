@@ -1,4 +1,4 @@
-const CACHE_NAME = 'mcconnery-pwa-v2';
+const CACHE_NAME = 'mcconnery-pwa-v3';
 const APP_SHELL = ['./', './manifest.webmanifest', './icon.svg'];
 
 self.addEventListener('install', (event) => {
@@ -41,8 +41,8 @@ self.addEventListener('fetch', (event) => {
 
 self.addEventListener('push', (event) => {
   let payload = {
-    title: 'Maison Funeraire McConnery',
-    body: 'Un nouvel avis de deces est disponible.',
+    title: 'Maison Funéraire McConnery',
+    body: 'Un nouvel avis de décès est disponible.',
     url: './',
     icon: './icon.svg',
     badge: './icon.svg'

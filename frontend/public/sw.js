@@ -1,4 +1,4 @@
-const CACHE_NAME = 'mcconnery-pwa-v3';
+const CACHE_NAME = 'mcconnery-pwa-v4';
 const APP_SHELL = ['./', './manifest.webmanifest', './icon.svg'];
 
 self.addEventListener('install', (event) => {
@@ -20,6 +20,20 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(request.url);
 
   if (request.method !== 'GET' || url.pathname.includes('/api/')) {
+    return;
+  }
+
+  const isPageRequest = request.mode === 'navigate' || request.headers.get('accept')?.includes('text/html');
+  if (isPageRequest) {
+    event.respondWith(
+      fetch(request).then((response) => {
+        if (response.ok && url.origin === self.location.origin) {
+          const copy = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
+        }
+        return response;
+      }).catch(() => caches.match(request))
+    );
     return;
   }
 

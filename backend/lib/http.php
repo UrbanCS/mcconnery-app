@@ -76,14 +76,64 @@ function is_cli(): bool
     return PHP_SAPI === 'cli';
 }
 
+function repair_mojibake_text(string $value): string
+{
+    if ($value === '' || !preg_match('/(?:Ã|Â|â)/u', $value)) {
+        return $value;
+    }
+
+    $manualFixes = [
+        'Ãmond' => 'Émond',
+        'Ãmile' => 'Émile',
+        'Ãmilien' => 'Émilien',
+        'Ãtienne' => 'Étienne',
+        'Ãlise' => 'Élise',
+        'Ãliane' => 'Éliane',
+        'Ãdouard' => 'Édouard',
+    ];
+    $value = str_replace(array_keys($manualFixes), array_values($manualFixes), $value);
+
+    $fixed = null;
+    if (function_exists('mb_convert_encoding')) {
+        $bytes = @mb_convert_encoding($value, 'Windows-1252', 'UTF-8');
+        if (is_string($bytes) && preg_match('//u', $bytes)) {
+            $fixed = $bytes;
+        }
+    }
+
+    if ($fixed === null && function_exists('iconv')) {
+        $bytes = @iconv('UTF-8', 'Windows-1252//TRANSLIT//IGNORE', $value);
+        if (is_string($bytes) && preg_match('//u', $bytes)) {
+            $fixed = $bytes;
+        }
+    }
+
+    if ($fixed === null) {
+        return $value;
+    }
+
+    return mojibake_score($fixed) <= mojibake_score($value) ? $fixed : $value;
+}
+
+function mojibake_score(string $value): int
+{
+    return substr_count($value, 'Ã')
+        + substr_count($value, 'Â')
+        + substr_count($value, 'â€™')
+        + substr_count($value, 'â€œ')
+        + substr_count($value, 'â€')
+        + substr_count($value, '�');
+}
+
 function clean_text(string $value): string
 {
     $value = html_entity_decode($value, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+    $value = repair_mojibake_text($value);
     $value = strip_tags($value);
     $value = preg_replace('/[ \t]+/', ' ', $value) ?? $value;
     $value = preg_replace('/\R{3,}/', "\n\n", $value) ?? $value;
 
-    return trim($value);
+    return trim(repair_mojibake_text($value));
 }
 
 function excerpt_text(string $value, int $length = 220): string

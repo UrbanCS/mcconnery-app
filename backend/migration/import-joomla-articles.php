@@ -40,16 +40,24 @@ function slugify_text(string $value): string
 
 function migration_already_done(string $sourceId): bool
 {
+    return migration_target_id($sourceId) !== null;
+}
+
+function migration_target_id(string $sourceId): ?string
+{
     try {
         $stmt = db()->prepare(
-            'SELECT COUNT(*) FROM migration_logs
+            'SELECT target_id FROM migration_logs
              WHERE source_system = "wordpress" AND source_id = :source_id
-               AND target_system = "joomla" AND status = "success"'
+               AND target_system = "joomla" AND status = "success" AND target_id <> ""
+             ORDER BY id DESC
+             LIMIT 1'
         );
         $stmt->execute(['source_id' => $sourceId]);
-        return (int)$stmt->fetchColumn() > 0;
+        $targetId = $stmt->fetchColumn();
+        return is_string($targetId) && $targetId !== '' ? $targetId : null;
     } catch (Throwable) {
-        return false;
+        return null;
     }
 }
 
@@ -78,7 +86,14 @@ function download_joomla_image(array $config, array $item): string
     }
 
     $sourceId = preg_replace('/[^a-zA-Z0-9_-]/', '', (string)$item['source_id']);
-    $extension = pathinfo(parse_url((string)$item['image_url'], PHP_URL_PATH) ?: '', PATHINFO_EXTENSION) ?: 'jpg';
+    $imageUrl = repair_mojibake_text((string)$item['image_url']);
+    $extension = strtolower(pathinfo(parse_url($imageUrl, PHP_URL_PATH) ?: '', PATHINFO_EXTENSION) ?: 'jpg');
+    if (!in_array($extension, ['jpg', 'jpeg', 'png', 'gif', 'webp'], true)) {
+        migration_log($sourceId, '', 'warning', 'Image ignoree: extension non supportee ' . $extension);
+        echo "  Image ignoree ({$sourceId}): extension non supportee {$extension}\n";
+        return '';
+    }
+
     $relativeDir = 'images/avis-de-deces/' . $sourceId;
     $absoluteDir = rtrim((string)$config['JOOMLA_ROOT_PATH'], '/') . '/' . $relativeDir;
 
@@ -89,29 +104,169 @@ function download_joomla_image(array $config, array $item): string
     $relativePath = $relativeDir . '/photo.' . preg_replace('/[^a-z0-9]/i', '', $extension);
     $absolutePath = rtrim((string)$config['JOOMLA_ROOT_PATH'], '/') . '/' . $relativePath;
 
-    try {
-        $content = fetch_remote_text((string)$item['image_url']);
-    } catch (Throwable $error) {
-        migration_log($sourceId, '', 'warning', 'Image ignoree: ' . $error->getMessage());
-        echo "  Image ignoree ({$sourceId}): " . $error->getMessage() . "\n";
-        return '';
+    if (is_file($absolutePath) && filesize($absolutePath) > 0) {
+        return $relativePath;
     }
 
-    if (@file_put_contents($absolutePath, $content) === false) {
-        migration_log($sourceId, '', 'warning', 'Image non sauvegardee: ' . $absolutePath);
-        echo "  Image non sauvegardee ({$sourceId}): {$absolutePath}\n";
-        return '';
+    $lastError = '';
+    foreach (remote_url_candidates($imageUrl) as $candidateUrl) {
+        try {
+            $content = fetch_remote_text($candidateUrl);
+        } catch (Throwable $error) {
+            $lastError = $error->getMessage();
+            continue;
+        }
+
+        if (@file_put_contents($absolutePath, $content) === false) {
+            migration_log($sourceId, '', 'warning', 'Image non sauvegardee: ' . $absolutePath);
+            echo "  Image non sauvegardee ({$sourceId}): {$absolutePath}\n";
+            return '';
+        }
+
+        return $relativePath;
     }
 
-    return $relativePath;
+    migration_log($sourceId, '', 'warning', 'Image ignoree: ' . $lastError);
+    echo "  Image ignoree ({$sourceId}): " . $lastError . "\n";
+    return '';
+}
+
+function remote_url_candidates(string $url): array
+{
+    $urls = [$url, repair_mojibake_text($url)];
+    foreach ($urls as $candidate) {
+        $urls[] = encode_url_path($candidate);
+    }
+
+    return array_values(array_unique(array_filter($urls)));
+}
+
+function encode_url_path(string $url): string
+{
+    $parts = parse_url($url);
+    if (!is_array($parts) || empty($parts['scheme']) || empty($parts['host'])) {
+        return $url;
+    }
+
+    $path = $parts['path'] ?? '';
+    $encodedPath = implode('/', array_map(
+        static fn(string $segment): string => rawurlencode(rawurldecode($segment)),
+        explode('/', $path)
+    ));
+
+    $encoded = $parts['scheme'] . '://' . $parts['host'];
+    if (isset($parts['port'])) {
+        $encoded .= ':' . $parts['port'];
+    }
+    $encoded .= $encodedPath;
+    if (isset($parts['query'])) {
+        $encoded .= '?' . $parts['query'];
+    }
+
+    return $encoded;
+}
+
+function prepare_joomla_article(array $config, array $item, bool $apply): array
+{
+    $sourceId = (string)($item['source_id'] ?? '');
+    $title = trim(repair_mojibake_text((string)($item['person_name'] ?? $item['title'] ?? 'Avis de deces')));
+    $alias = slugify_text($title . '-' . $sourceId);
+    $contentText = trim(repair_mojibake_text((string)($item['content'] ?? $item['excerpt'] ?? '')));
+    $intro = nl2br(htmlspecialchars(excerpt_text($contentText, 350), ENT_QUOTES, 'UTF-8'));
+    $full = nl2br(htmlspecialchars($contentText, ENT_QUOTES, 'UTF-8'));
+    $publishUp = ($item['published_at'] ?? '') ?: (($item['death_date'] ?? '') . ' 00:00:00');
+    $publishUp = trim((string)$publishUp) !== '' ? $publishUp : db_now();
+    $imagePath = $apply ? download_joomla_image($config, $item) : '';
+
+    return [
+        'source_id' => $sourceId,
+        'title' => $title,
+        'alias' => $alias,
+        'introtext' => $intro,
+        'fulltext' => $full,
+        'publish_up' => $publishUp,
+        'images' => $imagePath !== ''
+            ? json_encode(['image_intro' => $imagePath, 'image_fulltext' => $imagePath], JSON_UNESCAPED_SLASHES)
+            : null,
+    ];
+}
+
+function update_joomla_article(PDO $pdo, string $table, string $targetId, array $article, int $categoryId): void
+{
+    $now = db_now();
+    if ($article['images'] !== null) {
+        $stmt = $pdo->prepare(
+            "UPDATE `{$table}`
+             SET title = :title, alias = :alias, introtext = :introtext, `fulltext` = :fulltext,
+                 catid = :catid, modified = :modified, publish_up = :publish_up, images = :images
+             WHERE id = :id"
+        );
+        $stmt->execute([
+            'title' => $article['title'],
+            'alias' => $article['alias'],
+            'introtext' => $article['introtext'],
+            'fulltext' => $article['fulltext'],
+            'catid' => $categoryId,
+            'modified' => $now,
+            'publish_up' => $article['publish_up'],
+            'images' => $article['images'],
+            'id' => $targetId,
+        ]);
+        return;
+    }
+
+    $stmt = $pdo->prepare(
+        "UPDATE `{$table}`
+         SET title = :title, alias = :alias, introtext = :introtext, `fulltext` = :fulltext,
+             catid = :catid, modified = :modified, publish_up = :publish_up
+         WHERE id = :id"
+    );
+    $stmt->execute([
+        'title' => $article['title'],
+        'alias' => $article['alias'],
+        'introtext' => $article['introtext'],
+        'fulltext' => $article['fulltext'],
+        'catid' => $categoryId,
+        'modified' => $now,
+        'publish_up' => $article['publish_up'],
+        'id' => $targetId,
+    ]);
+}
+
+function insert_joomla_article(PDO $pdo, string $table, array $article, int $categoryId, int $createdBy): string
+{
+    $stmt = $pdo->prepare(
+        "INSERT INTO `{$table}`
+         (asset_id, title, alias, introtext, `fulltext`, state, catid, created, created_by, modified, publish_up,
+          images, urls, attribs, metadata, metakey, metadesc, access, language, version, hits, featured)
+         VALUES
+         (0, :title, :alias, :introtext, :fulltext, 1, :catid, :created, :created_by, :modified, :publish_up,
+          :images, '{}', '{}', '{}', '', '', 1, '*', 1, 0, 0)"
+    );
+    $now = db_now();
+    $stmt->execute([
+        'title' => $article['title'],
+        'alias' => $article['alias'],
+        'introtext' => $article['introtext'],
+        'fulltext' => $article['fulltext'],
+        'catid' => $categoryId,
+        'created' => $now,
+        'created_by' => $createdBy,
+        'modified' => $now,
+        'publish_up' => $article['publish_up'],
+        'images' => $article['images'] ?? '{}',
+    ]);
+
+    return (string)$pdo->lastInsertId();
 }
 
 $file = (string)import_arg('file', '');
 $apply = (bool)import_arg('apply', false);
 $limit = (int)import_arg('limit', 0);
+$updateExisting = (bool)import_arg('update-existing', false);
 
 if ($file === '' || !file_exists($file)) {
-    echo "Usage: php import-joomla-articles.php --file=output/obituaries-html.json [--limit=5] [--apply]\n";
+    echo "Usage: php import-joomla-articles.php --file=output/obituaries-html.json [--limit=5] [--apply] [--update-existing]\n";
     exit(1);
 }
 
@@ -140,55 +295,33 @@ foreach ($items as $item) {
     if ($sourceId === '') {
         continue;
     }
-    if (migration_already_done($sourceId)) {
+    $targetId = migration_target_id($sourceId);
+    if ($targetId !== null && !$updateExisting) {
         echo "Ignore deja importe: {$sourceId}\n";
         continue;
     }
 
-    $title = trim((string)($item['person_name'] ?? $item['title'] ?? 'Avis de deces'));
-    $alias = slugify_text($title . '-' . $sourceId);
-    $contentText = trim((string)($item['content'] ?? $item['excerpt'] ?? ''));
-    $intro = nl2br(htmlspecialchars(excerpt_text($contentText, 350), ENT_QUOTES, 'UTF-8'));
-    $full = nl2br(htmlspecialchars($contentText, ENT_QUOTES, 'UTF-8'));
-    $publishUp = $item['published_at'] ?: (($item['death_date'] ?? '') . ' 00:00:00');
-    $publishUp = trim($publishUp) !== '' ? $publishUp : db_now();
-    $imagePath = $apply ? download_joomla_image($migrationConfig, $item) : '';
-    $images = $imagePath !== ''
-        ? json_encode(['image_intro' => $imagePath, 'image_fulltext' => $imagePath], JSON_UNESCAPED_SLASHES)
-        : '{}';
+    $article = prepare_joomla_article($migrationConfig, $item, $apply);
 
-    echo ($apply ? 'Import' : 'Dry-run') . ": {$title} ({$sourceId})\n";
+    if ($targetId !== null) {
+        echo ($apply ? 'Update' : 'Dry-run update') . ": {$article['title']} ({$sourceId})\n";
+        if ($apply) {
+            update_joomla_article($pdo, $table, $targetId, $article, $categoryId);
+        }
+        $count++;
+        continue;
+    }
+
+    echo ($apply ? 'Import' : 'Dry-run') . ": {$article['title']} ({$sourceId})\n";
 
     if (!$apply) {
         $count++;
         continue;
     }
 
-    $stmt = $pdo->prepare(
-        "INSERT INTO `{$table}`
-         (asset_id, title, alias, introtext, `fulltext`, state, catid, created, created_by, modified, publish_up,
-          images, urls, attribs, metadata, metakey, metadesc, access, language, version, hits, featured)
-         VALUES
-         (0, :title, :alias, :introtext, :fulltext, 1, :catid, :created, :created_by, :modified, :publish_up,
-          :images, '{}', '{}', '{}', '', '', 1, '*', 1, 0, 0)"
-    );
-    $now = db_now();
-    $stmt->execute([
-        'title' => $title,
-        'alias' => $alias,
-        'introtext' => $intro,
-        'fulltext' => $full,
-        'catid' => $categoryId,
-        'created' => $now,
-        'created_by' => $createdBy,
-        'modified' => $now,
-        'publish_up' => $publishUp,
-        'images' => $images,
-    ]);
-
-    $targetId = (string)$pdo->lastInsertId();
-    migration_log($sourceId, $targetId, 'success', 'Article Joomla cree: ' . $title);
+    $targetId = insert_joomla_article($pdo, $table, $article, $categoryId, $createdBy);
+    migration_log($sourceId, $targetId, 'success', 'Article Joomla cree: ' . $article['title']);
     $count++;
 }
 
-echo "Termine. Elements traites: {$count}. Mode: " . ($apply ? 'apply' : 'dry-run') . "\n";
+echo "Termine. Elements traites: {$count}. Mode: " . ($apply ? 'apply' : 'dry-run') . ($updateExisting ? ' update-existing' : '') . "\n";

@@ -42,7 +42,7 @@ function node_attr(DOMXPath $xpath, string $query, string $attr): string
         return '';
     }
 
-    return trim($nodes->item(0)->getAttribute($attr));
+    return repair_mojibake_text(trim($nodes->item(0)->getAttribute($attr)));
 }
 
 function parse_obituary_detail(string $url): array

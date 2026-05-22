@@ -88,8 +88,20 @@ function download_joomla_image(array $config, array $item): string
 
     $relativePath = $relativeDir . '/photo.' . preg_replace('/[^a-z0-9]/i', '', $extension);
     $absolutePath = rtrim((string)$config['JOOMLA_ROOT_PATH'], '/') . '/' . $relativePath;
-    $content = fetch_remote_text((string)$item['image_url']);
-    file_put_contents($absolutePath, $content);
+
+    try {
+        $content = fetch_remote_text((string)$item['image_url']);
+    } catch (Throwable $error) {
+        migration_log($sourceId, '', 'warning', 'Image ignoree: ' . $error->getMessage());
+        echo "  Image ignoree ({$sourceId}): " . $error->getMessage() . "\n";
+        return '';
+    }
+
+    if (@file_put_contents($absolutePath, $content) === false) {
+        migration_log($sourceId, '', 'warning', 'Image non sauvegardee: ' . $absolutePath);
+        echo "  Image non sauvegardee ({$sourceId}): {$absolutePath}\n";
+        return '';
+    }
 
     return $relativePath;
 }

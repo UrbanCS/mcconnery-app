@@ -15,9 +15,16 @@ return [
     'WORDPRESS_OBITUARY_FEED' => 'https://www.maisonfunerairemcconnery.ca/feed/avis-de-deces-xml/',
     'JOOMLA_API_BASE' => '',
     'JOOMLA_OBITUARY_API' => '',
+    'JOOMLA_DB_HOST' => 'localhost',
+    'JOOMLA_DB_NAME' => '',
+    'JOOMLA_DB_USER' => '',
+    'JOOMLA_DB_PASS' => '',
+    'JOOMLA_TABLE_PREFIX' => '',
+    'JOOMLA_CATEGORY_ID' => 0,
 
     'OBITUARY_SOURCE' => 'wordpress_rss',
     'CRON_NOTIFY_ON_FIRST_RUN' => false,
+    'CRON_FETCH_LIMIT' => 25,
 
     'VAPID_PUBLIC_KEY' => '',
     'VAPID_PRIVATE_KEY' => '',

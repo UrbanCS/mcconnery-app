@@ -92,11 +92,174 @@ function fetch_wordpress_rss_obituaries(int $limit = 20): array
     return $items;
 }
 
+function joomla_source_config(): array
+{
+    $config = [
+        'JOOMLA_DB_HOST' => app_config('JOOMLA_DB_HOST', ''),
+        'JOOMLA_DB_NAME' => app_config('JOOMLA_DB_NAME', ''),
+        'JOOMLA_DB_USER' => app_config('JOOMLA_DB_USER', ''),
+        'JOOMLA_DB_PASS' => app_config('JOOMLA_DB_PASS', ''),
+        'JOOMLA_TABLE_PREFIX' => app_config('JOOMLA_TABLE_PREFIX', ''),
+        'JOOMLA_CATEGORY_ID' => app_config('JOOMLA_CATEGORY_ID', 0),
+        'FINAL_SITE_URL' => app_config('FINAL_SITE_URL', ''),
+    ];
+
+    $migrationConfigPath = __DIR__ . '/../migration/config.php';
+    if (file_exists($migrationConfigPath)) {
+        $migrationConfig = require $migrationConfigPath;
+        if (is_array($migrationConfig)) {
+            foreach ($config as $key => $value) {
+                if (($value === '' || $value === 0) && isset($migrationConfig[$key])) {
+                    $config[$key] = $migrationConfig[$key];
+                }
+            }
+        }
+    }
+
+    if ($config['FINAL_SITE_URL'] === '') {
+        $config['FINAL_SITE_URL'] = app_config('APP_BASE_URL', '');
+    }
+
+    return $config;
+}
+
+function joomla_db(): PDO
+{
+    static $pdo = null;
+    if ($pdo instanceof PDO) {
+        return $pdo;
+    }
+
+    $config = joomla_source_config();
+    foreach (['JOOMLA_DB_HOST', 'JOOMLA_DB_NAME', 'JOOMLA_DB_USER', 'JOOMLA_TABLE_PREFIX'] as $key) {
+        if (trim((string)$config[$key]) === '') {
+            throw new RuntimeException('Configuration Joomla manquante: ' . $key);
+        }
+    }
+
+    $dsn = 'mysql:host=' . $config['JOOMLA_DB_HOST'] . ';dbname=' . $config['JOOMLA_DB_NAME'] . ';charset=utf8mb4';
+    $pdo = new PDO($dsn, (string)$config['JOOMLA_DB_USER'], (string)$config['JOOMLA_DB_PASS'], [
+        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+        PDO::ATTR_EMULATE_PREPARES => false,
+    ]);
+
+    return $pdo;
+}
+
+function joomla_article_source_id(array $row): string
+{
+    $joomlaId = (string)($row['id'] ?? '');
+
+    try {
+        $stmt = db()->prepare(
+            'SELECT source_id FROM migration_logs
+             WHERE source_system = "wordpress" AND target_system = "joomla"
+               AND target_id = :target_id AND status = "success" AND source_id <> ""
+             ORDER BY id DESC
+             LIMIT 1'
+        );
+        $stmt->execute(['target_id' => $joomlaId]);
+        $sourceId = $stmt->fetchColumn();
+        if (is_string($sourceId) && $sourceId !== '') {
+            return $sourceId;
+        }
+    } catch (Throwable) {
+        // If the migration log is unavailable, new Joomla articles can still be tracked.
+    }
+
+    return 'joomla-' . $joomlaId;
+}
+
+function joomla_article_image_url(array $row, array $config): ?string
+{
+    $images = json_decode((string)($row['images'] ?? '{}'), true);
+    if (!is_array($images)) {
+        return null;
+    }
+
+    $image = trim((string)($images['image_intro'] ?? $images['image_fulltext'] ?? ''));
+    if ($image === '') {
+        return null;
+    }
+
+    if (preg_match('~^https?://~i', $image)) {
+        return $image;
+    }
+
+    return rtrim((string)$config['FINAL_SITE_URL'], '/') . '/' . ltrim($image, '/');
+}
+
+function joomla_article_url(array $row, array $config): string
+{
+    $alias = trim((string)($row['alias'] ?? ''));
+    if ($alias !== '') {
+        return rtrim((string)$config['FINAL_SITE_URL'], '/') . '/index.php/avis-de-deces/' . rawurlencode($alias);
+    }
+
+    return rtrim((string)$config['FINAL_SITE_URL'], '/') . '/index.php?option=com_content&view=article&id=' . (int)$row['id'];
+}
+
+function fetch_joomla_db_obituaries(int $limit = 20): array
+{
+    $config = joomla_source_config();
+    $categoryId = (int)$config['JOOMLA_CATEGORY_ID'];
+    if ($categoryId <= 0) {
+        throw new RuntimeException('Configuration Joomla manquante: JOOMLA_CATEGORY_ID');
+    }
+
+    $table = preg_replace('/[^a-zA-Z0-9_]/', '', (string)$config['JOOMLA_TABLE_PREFIX']) . 'content';
+    $stmt = joomla_db()->prepare(
+        "SELECT id, title, alias, introtext, `fulltext`, images, created, modified, publish_up
+         FROM `{$table}`
+         WHERE state = 1 AND catid = :catid
+            AND (publish_up IS NULL OR publish_up = '0000-00-00 00:00:00' OR publish_up <= CURRENT_TIMESTAMP)
+            AND (publish_down IS NULL OR publish_down = '0000-00-00 00:00:00' OR publish_down > CURRENT_TIMESTAMP)
+         ORDER BY
+            CASE WHEN publish_up IS NULL OR publish_up = '0000-00-00 00:00:00' THEN created ELSE publish_up END DESC,
+            created DESC,
+            id DESC
+         LIMIT :limit"
+    );
+    $stmt->bindValue(':catid', $categoryId, PDO::PARAM_INT);
+    $stmt->bindValue(':limit', max(1, min(200, $limit)), PDO::PARAM_INT);
+    $stmt->execute();
+
+    $items = [];
+    foreach ($stmt->fetchAll() as $row) {
+        $content = clean_text((string)($row['fulltext'] ?: $row['introtext']));
+        $intro = clean_text((string)($row['introtext'] ?: $row['fulltext']));
+        $publishUp = trim((string)($row['publish_up'] ?? ''));
+        $publishedRaw = $publishUp !== '' && $publishUp !== '0000-00-00 00:00:00' ? $publishUp : (string)$row['created'];
+        $publishedAt = parse_date_or_null($publishedRaw);
+        $deathDate = $publishedAt ? substr($publishedAt, 0, 10) : null;
+
+        $record = [
+            'source_id' => joomla_article_source_id($row),
+            'source_url' => joomla_article_url($row, $config),
+            'title' => clean_text((string)$row['title']),
+            'person_name' => clean_text((string)$row['title']),
+            'excerpt' => excerpt_text($intro !== '' ? $intro : $content),
+            'content' => $content,
+            'image_url' => joomla_article_image_url($row, $config),
+            'death_date' => $deathDate,
+            'published_at' => $publishedAt,
+        ];
+        $record['content_hash'] = obituary_hash($record);
+        $items[] = $record;
+    }
+
+    return $items;
+}
+
 function fetch_configured_obituaries(int $limit = 20): array
 {
     $source = (string)app_config('OBITUARY_SOURCE', 'wordpress_rss');
     if ($source === 'wordpress_rss') {
         return fetch_wordpress_rss_obituaries($limit);
+    }
+    if ($source === 'joomla_db') {
+        return fetch_joomla_db_obituaries($limit);
     }
 
     throw new RuntimeException('Source non supportee pour ce MVP: ' . $source);

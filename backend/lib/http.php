@@ -129,6 +129,8 @@ function clean_text(string $value): string
 {
     $value = html_entity_decode($value, ENT_QUOTES | ENT_HTML5, 'UTF-8');
     $value = repair_mojibake_text($value);
+    $value = preg_replace('~<\s*br\s*/?\s*>~i', "\n", $value) ?? $value;
+    $value = preg_replace('~</\s*p\s*>~i', "\n\n", $value) ?? $value;
     $value = strip_tags($value);
     $value = preg_replace('/[ \t]+/', ' ', $value) ?? $value;
     $value = preg_replace('/\R{3,}/', "\n\n", $value) ?? $value;

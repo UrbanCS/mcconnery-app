@@ -8,6 +8,7 @@ export default {
         paper: '#f7f5f2',
         ink: '#26312e',
         cedar: '#47665a',
+        action: '#696941',
         moss: '#6f7d55',
         rosewood: '#8a5c58',
         line: '#ded8d0'

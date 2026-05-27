@@ -211,18 +211,18 @@ function App() {
     <div className="min-h-screen bg-paper text-ink">
       <header className="sticky top-0 z-20 border-b border-line bg-paper/95 backdrop-blur">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
-          <button className="flex min-h-11 items-center gap-3 text-left" onClick={() => go('/')}>
-            <span className="flex h-10 w-10 items-center justify-center rounded bg-cedar text-lg font-semibold text-white">M</span>
-            <span>
-              <span className="block text-sm font-semibold leading-tight">Maison Funéraire</span>
-              <span className="block text-lg font-semibold leading-tight">McConnery</span>
-            </span>
+          <button className="flex min-h-11 items-center text-left" onClick={() => go('/')} aria-label="Maison Funéraire McConnery">
+            <img
+              className="h-12 w-auto max-w-[220px] object-contain sm:h-14 sm:max-w-[280px]"
+              src="logo-mcconnery2026.png"
+              alt="Maison Funéraire McConnery"
+            />
           </button>
           <nav className="flex items-center gap-1">
-            <button className="rounded p-3 text-cedar" aria-label="Accueil" onClick={() => go('/')}>
+            <button className="rounded p-3 text-action" aria-label="Accueil" onClick={() => go('/')}>
               <Home size={21} />
             </button>
-            <button className="rounded p-3 text-cedar" aria-label="Avis de décès" onClick={() => go('/avis')}>
+            <button className="rounded p-3 text-action" aria-label="Avis de décès" onClick={() => go('/avis')}>
               <Newspaper size={21} />
             </button>
           </nav>
@@ -281,7 +281,7 @@ function BottomButton({ active, label, icon, onClick }: { active: boolean; label
   return (
     <button
       className={`flex min-h-12 flex-col items-center justify-center rounded-md px-2 text-xs font-medium ${
-        active ? 'bg-cedar text-white' : 'text-ink'
+        active ? 'bg-action text-white' : 'text-ink'
       }`}
       onClick={onClick}
     >
@@ -320,14 +320,14 @@ function HomePage({
         </p>
         <div className="mt-5 flex flex-col gap-3 sm:flex-row">
           <button
-            className="inline-flex min-h-12 items-center justify-center gap-2 rounded bg-cedar px-5 font-semibold text-white"
+            className="inline-flex min-h-12 items-center justify-center gap-2 rounded bg-action px-5 font-semibold text-white"
             onClick={onTogglePush}
           >
             {pushEnabled ? <BellOff size={20} /> : <Bell size={20} />}
             {pushEnabled ? 'Désactiver les notifications' : 'Activer les notifications'}
           </button>
           <button
-            className="inline-flex min-h-12 items-center justify-center gap-2 rounded border border-cedar bg-paper px-5 font-semibold text-cedar disabled:cursor-default disabled:opacity-70"
+            className="inline-flex min-h-12 items-center justify-center gap-2 rounded border border-action bg-paper px-5 font-semibold text-action disabled:cursor-default disabled:opacity-70"
             onClick={onInstallClick}
             disabled={installDisabled}
           >
@@ -347,7 +347,7 @@ function HomePage({
       <section>
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-xl font-semibold">Derniers avis</h2>
-          <button className="text-sm font-semibold text-cedar" onClick={() => go('/avis')}>
+          <button className="text-sm font-semibold text-action" onClick={() => go('/avis')}>
             Tout voir
           </button>
         </div>
@@ -387,7 +387,7 @@ function InstallHelpDialog({ platform, onClose }: { platform: InstallPlatform; o
             <p className="text-sm font-semibold uppercase tracking-wide text-rosewood">Application</p>
             <h2 id="install-help-title" className="mt-1 text-2xl font-semibold">{title}</h2>
           </div>
-          <button className="rounded p-2 text-cedar" onClick={onClose} aria-label="Fermer">
+          <button className="rounded p-2 text-action" onClick={onClose} aria-label="Fermer">
             <X size={22} />
           </button>
         </div>
@@ -409,7 +409,7 @@ function InstallHelpDialog({ platform, onClose }: { platform: InstallPlatform; o
           </p>
         ) : null}
 
-        <button className="mt-5 inline-flex min-h-12 w-full items-center justify-center rounded bg-cedar px-5 font-semibold text-white" onClick={onClose}>
+        <button className="mt-5 inline-flex min-h-12 w-full items-center justify-center rounded bg-action px-5 font-semibold text-white" onClick={onClose}>
           Compris
         </button>
       </div>
@@ -442,7 +442,7 @@ function ObituaryList({ items, loading, compact = false }: { items: Obituary[]; 
               <h2 className="text-lg font-semibold leading-snug">{item.person_name || item.title}</h2>
               <p className="mt-1 text-sm text-rosewood">{formatDate(item.death_date || item.published_at)}</p>
               {!compact ? <p className="mt-2 line-clamp-3 text-sm leading-6 text-ink/70">{item.excerpt}</p> : null}
-              <span className="mt-3 inline-block text-sm font-semibold text-cedar">Voir l'avis</span>
+              <span className="mt-3 inline-block text-sm font-semibold text-action">Voir l'avis</span>
             </div>
           </button>
         </article>
@@ -486,7 +486,7 @@ function ObituaryDetail({
             <h1 className="text-3xl font-semibold leading-tight">{item.person_name || item.title}</h1>
             <p className="mt-2 text-base font-medium text-rosewood">{formatDate(item.death_date || item.published_at)}</p>
             <div className="mt-5 flex flex-col gap-3 sm:flex-row">
-              <button className="inline-flex min-h-12 items-center justify-center gap-2 rounded bg-cedar px-5 font-semibold text-white" onClick={() => onShare(item)}>
+              <button className="inline-flex min-h-12 items-center justify-center gap-2 rounded bg-action px-5 font-semibold text-white" onClick={() => onShare(item)}>
                 <Share2 size={19} />
                 Partager
               </button>
@@ -521,7 +521,7 @@ function ContactPage({ config }: { config: PublicConfig | null }) {
         <ContactLine icon={<MapPin size={20} />} label={contact?.address || '206 rue Cartier, Maniwaki (Quebec) J9E 1R3'} />
       </div>
       <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-        <a className="inline-flex min-h-12 items-center justify-center gap-2 rounded bg-cedar px-5 font-semibold text-white" href={contact?.official_contact_url || 'https://mcconnery.ca/contact'}>
+        <a className="inline-flex min-h-12 items-center justify-center gap-2 rounded bg-action px-5 font-semibold text-white" href={contact?.official_contact_url || 'https://mcconnery.ca/contact'}>
           Page contact officielle
           <ExternalLink size={18} />
         </a>

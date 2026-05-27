@@ -166,6 +166,17 @@ function encode_url_path(string $url): string
     return $encoded;
 }
 
+function joomla_publish_up_from_item(array $item): string
+{
+    $deathDate = trim((string)($item['death_date'] ?? ''));
+    if ($deathDate !== '') {
+        return strlen($deathDate) === 10 ? $deathDate . ' 00:00:00' : $deathDate;
+    }
+
+    $publishedAt = trim((string)($item['published_at'] ?? ''));
+    return $publishedAt !== '' ? $publishedAt : db_now();
+}
+
 function prepare_joomla_article(array $config, array $item, bool $apply): array
 {
     $sourceId = (string)($item['source_id'] ?? '');
@@ -174,8 +185,7 @@ function prepare_joomla_article(array $config, array $item, bool $apply): array
     $contentText = trim(repair_mojibake_text((string)($item['content'] ?? $item['excerpt'] ?? '')));
     $intro = nl2br(htmlspecialchars(excerpt_text($contentText, 350), ENT_QUOTES, 'UTF-8'));
     $full = nl2br(htmlspecialchars($contentText, ENT_QUOTES, 'UTF-8'));
-    $publishUp = ($item['published_at'] ?? '') ?: (($item['death_date'] ?? '') . ' 00:00:00');
-    $publishUp = trim((string)$publishUp) !== '' ? $publishUp : db_now();
+    $publishUp = joomla_publish_up_from_item($item);
     $imagePath = $apply ? download_joomla_image($config, $item) : '';
 
     return [
@@ -233,6 +243,53 @@ function update_joomla_article(PDO $pdo, string $table, string $targetId, array 
     ]);
 }
 
+function joomla_default_workflow_stage_id(PDO $pdo, string $prefix): int
+{
+    try {
+        $stmt = $pdo->query(
+            "SELECT id FROM `{$prefix}workflow_stages`
+             WHERE `default` = 1
+             ORDER BY id ASC
+             LIMIT 1"
+        );
+        $stageId = (int)$stmt->fetchColumn();
+        if ($stageId > 0) {
+            return $stageId;
+        }
+    } catch (Throwable) {
+        // Joomla's default published stage is usually ID 1.
+    }
+
+    return 1;
+}
+
+function ensure_joomla_workflow_association(PDO $pdo, string $prefix, string $articleId): void
+{
+    try {
+        $stageId = joomla_default_workflow_stage_id($pdo, $prefix);
+        $check = $pdo->prepare(
+            "SELECT COUNT(*)
+             FROM `{$prefix}workflow_associations`
+             WHERE item_id = :item_id AND extension = 'com_content.article'"
+        );
+        $check->execute(['item_id' => (int)$articleId]);
+        if ((int)$check->fetchColumn() > 0) {
+            return;
+        }
+
+        $stmt = $pdo->prepare(
+            "INSERT INTO `{$prefix}workflow_associations` (item_id, stage_id, extension)
+             VALUES (:item_id, :stage_id, 'com_content.article')"
+        );
+        $stmt->execute([
+            'item_id' => (int)$articleId,
+            'stage_id' => $stageId,
+        ]);
+    } catch (Throwable $error) {
+        echo "  Association workflow ignoree ({$articleId}): " . $error->getMessage() . "\n";
+    }
+}
+
 function insert_joomla_article(PDO $pdo, string $table, array $article, int $categoryId, int $createdBy): string
 {
     $stmt = $pdo->prepare(
@@ -260,19 +317,62 @@ function insert_joomla_article(PDO $pdo, string $table, array $article, int $cat
     return (string)$pdo->lastInsertId();
 }
 
+function sync_joomla_obituary_workflows(PDO $pdo, string $prefix, int $categoryId): int
+{
+    try {
+        $stageId = joomla_default_workflow_stage_id($pdo, $prefix);
+        $stmt = $pdo->prepare(
+            "INSERT INTO `{$prefix}workflow_associations` (item_id, stage_id, extension)
+             SELECT c.id, :stage_id, 'com_content.article'
+             FROM `{$prefix}content` c
+             LEFT JOIN `{$prefix}workflow_associations` wa
+                ON wa.item_id = c.id AND wa.extension = 'com_content.article'
+             WHERE c.catid = :catid AND wa.item_id IS NULL"
+        );
+        $stmt->execute([
+            'stage_id' => $stageId,
+            'catid' => $categoryId,
+        ]);
+
+        return $stmt->rowCount();
+    } catch (Throwable $error) {
+        echo 'Association workflow impossible: ' . $error->getMessage() . "\n";
+        return 0;
+    }
+}
+
 $file = (string)import_arg('file', '');
 $apply = (bool)import_arg('apply', false);
 $limit = (int)import_arg('limit', 0);
 $updateExisting = (bool)import_arg('update-existing', false);
-
-if ($file === '' || !file_exists($file)) {
-    echo "Usage: php import-joomla-articles.php --file=output/obituaries-html.json [--limit=5] [--apply] [--update-existing]\n";
-    exit(1);
-}
+$syncWorkflows = (bool)import_arg('sync-workflows', false);
 
 $categoryId = (int)$migrationConfig['JOOMLA_CATEGORY_ID'];
 if ($categoryId <= 0) {
     echo "Configurez JOOMLA_CATEGORY_ID dans backend/migration/config.php avant l'import.\n";
+    exit(1);
+}
+
+$pdo = ($apply || $syncWorkflows) ? joomla_pdo($migrationConfig) : null;
+$tablePrefix = preg_replace('/[^a-zA-Z0-9_]/', '', (string)$migrationConfig['JOOMLA_TABLE_PREFIX']);
+
+if ($syncWorkflows) {
+    if (!$apply) {
+        echo "Dry-run workflows. Ajoutez --apply pour corriger les associations Joomla.\n";
+        exit(0);
+    }
+
+    $fixed = sync_joomla_obituary_workflows($pdo, $tablePrefix, $categoryId);
+    echo "Associations workflow ajoutees: {$fixed}\n";
+
+    if ($file === '') {
+        exit(0);
+    }
+}
+
+if ($file === '' || !file_exists($file)) {
+    echo "Usage: php import-joomla-articles.php --file=output/obituaries-html.json [--limit=5] [--apply] [--update-existing] [--sync-workflows]\n";
+    echo "       php import-joomla-articles.php --sync-workflows --apply\n";
     exit(1);
 }
 
@@ -285,7 +385,6 @@ if ($limit > 0) {
     $items = array_slice($items, 0, $limit);
 }
 
-$pdo = $apply ? joomla_pdo($migrationConfig) : null;
 $table = $migrationConfig['JOOMLA_TABLE_PREFIX'] . 'content';
 $createdBy = (int)$migrationConfig['JOOMLA_CREATED_BY'];
 $count = 0;
@@ -307,6 +406,7 @@ foreach ($items as $item) {
         echo ($apply ? 'Update' : 'Dry-run update') . ": {$article['title']} ({$sourceId})\n";
         if ($apply) {
             update_joomla_article($pdo, $table, $targetId, $article, $categoryId);
+            ensure_joomla_workflow_association($pdo, $tablePrefix, $targetId);
         }
         $count++;
         continue;
@@ -320,6 +420,7 @@ foreach ($items as $item) {
     }
 
     $targetId = insert_joomla_article($pdo, $table, $article, $categoryId, $createdBy);
+    ensure_joomla_workflow_association($pdo, $tablePrefix, $targetId);
     migration_log($sourceId, $targetId, 'success', 'Article Joomla cree: ' . $article['title']);
     $count++;
 }

@@ -15,7 +15,7 @@
 
 ## Reglages de la page liste
 
-Le script suivant configure la page **Avis de deces** pour afficher 50 avis par page en grille, ordonner les avis par ligne, enlever la liste de liens numerotes, masquer les resumes et grossir les photos.
+Le script suivant configure la page **Avis de deces** pour afficher 50 avis par page en grille, ordonner les avis par ligne de gauche a droite, classer les avis par date de deces du plus recent au plus ancien, enlever la liste de liens numerotes, masquer les resumes et grossir les photos.
 
 Depuis le dossier `pwa` sur cPanel:
 
@@ -54,6 +54,18 @@ php cli/joomla.php finder:index
 
 Le script de configuration affiche aussi la commande exacte avec le chemin de `JOOMLA_ROOT_PATH`.
 
+## Afficher tous les avis dans la PWA
+
+La page **Avis** de la PWA charge maintenant l'historique complet et inclut une barre de recherche par nom, date ou mot-cle.
+
+Pour que la PWA puisse recuperer tous les avis du nouveau site Joomla, verifier que `backend/config/config.php` utilise Joomla comme source:
+
+```php
+'OBITUARY_SOURCE' => 'joomla_db',
+```
+
+Les valeurs `JOOMLA_DB_HOST`, `JOOMLA_DB_NAME`, `JOOMLA_DB_USER`, `JOOMLA_DB_PASS`, `JOOMLA_TABLE_PREFIX` et `JOOMLA_CATEGORY_ID` doivent aussi etre configurees.
+
 ## Importer les nouveaux avis de l'ancien site
 
 Depuis le dossier `pwa` sur cPanel:
@@ -65,6 +77,55 @@ php migration/import-joomla-articles.php --file=migration/output/obituaries-rss.
 ```
 
 Ne pas ajouter `--update-existing` pour les imports incrementaux.
+
+## Importer les messages de sympathie
+
+Les messages de l'ancien livre de sympathies peuvent etre importes dans la PWA. Les messages importes sont marques comme **approved**. Les nouveaux messages envoyes depuis la PWA sont marques comme **pending** pour approbation.
+
+Importer les messages d'un seul avis:
+
+```bash
+cd ~/domains/mcconnery.ca/public_html/pwa
+php migration/import-sympathy-messages.php --source-id=2656
+php migration/import-sympathy-messages.php --source-id=2656 --apply
+```
+
+Importer les messages pour les avis deja importes dans Joomla:
+
+```bash
+cd ~/domains/mcconnery.ca/public_html/pwa
+php migration/import-sympathy-messages.php --limit=50
+php migration/import-sympathy-messages.php --limit=50 --apply
+```
+
+Le formulaire de sympathie dans la PWA ajoute les messages dans `sympathy_messages` avec le statut `pending`. Pour publier un message, changer son statut a `approved` dans la base de donnees.
+
+## Afficher les messages sur les fiches Joomla
+
+Le widget `joomla-sympathy-widget.js` peut etre ajoute au template Joomla pour afficher les messages et le formulaire directement sur les pages d'articles **Avis de deces**. Il utilise la meme API que la PWA.
+
+Depuis le dossier `pwa` sur cPanel:
+
+```bash
+php migration/configure-joomla-sympathy-widget.php
+php migration/configure-joomla-sympathy-widget.php --apply
+```
+
+Le script ajoute ce fichier dans le template Joomla:
+
+```text
+https://mcconnery.ca/pwa/joomla-sympathy-widget.js
+```
+
+Le widget detecte automatiquement les avis importes dont l'alias se termine par l'ancien ID WordPress, par exemple `victoria-dumont-whiteduck-2656`.
+Pour les avis crees directement dans Joomla sans ancien ID WordPress, le script du template passe aussi l'ID de l'article Joomla au widget. Les messages sont alors lies a un identifiant du type `joomla-1913`.
+
+Si le widget a deja ete installe avant cette logique, reuploader `joomla-sympathy-widget.js`, puis relancer:
+
+```bash
+cd ~/domains/mcconnery.ca/public_html/pwa
+php migration/configure-joomla-sympathy-widget.php --apply
+```
 
 ## Faire apparaitre les avis importes dans le back-end Articles
 

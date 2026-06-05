@@ -1,4 +1,4 @@
-import type { ApiItemResponse, ApiListResponse, Obituary, PublicConfig } from './types';
+import type { ApiItemResponse, ApiListResponse, Obituary, PublicConfig, SympathyMessage, SympathyMessageInput } from './types';
 
 const basePath = import.meta.env.VITE_API_BASE || `${import.meta.env.BASE_URL.replace(/\/?$/, '/') }api`;
 const API_BASE = basePath.replace(/\/$/, '');
@@ -28,14 +28,34 @@ export async function fetchPublicConfig(): Promise<PublicConfig> {
   return response.data;
 }
 
-export async function fetchObituaries(limit = 12): Promise<Obituary[]> {
-  const response = await request<ApiListResponse<Obituary>>(`/obituaries.php?limit=${limit}`);
+export async function fetchObituaries(limit = 12, options: { search?: string; sync?: boolean } = {}): Promise<Obituary[]> {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (options.search) {
+    params.set('q', options.search);
+  }
+  if (options.sync) {
+    params.set('sync', '1');
+  }
+
+  const response = await request<ApiListResponse<Obituary>>(`/obituaries.php?${params.toString()}`);
   return response.data;
 }
 
 export async function fetchObituary(id: string): Promise<Obituary> {
   const response = await request<ApiItemResponse<Obituary>>(`/obituary.php?id=${encodeURIComponent(id)}`);
   return response.data;
+}
+
+export async function fetchSympathyMessages(sourceId: string): Promise<SympathyMessage[]> {
+  const response = await request<ApiListResponse<SympathyMessage>>(`/sympathy-messages.php?source_id=${encodeURIComponent(sourceId)}`);
+  return response.data;
+}
+
+export async function submitSympathyMessage(input: SympathyMessageInput): Promise<void> {
+  await request('/sympathy-messages.php', {
+    method: 'POST',
+    body: JSON.stringify(input)
+  });
 }
 
 export async function savePushSubscription(subscription: PushSubscription): Promise<void> {

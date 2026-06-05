@@ -25,6 +25,25 @@ export type PublicConfig = {
   };
 };
 
+export type SympathyMessage = {
+  id: number | string;
+  obituary_source_id: string;
+  author_name: string;
+  message: string;
+  status: string;
+  posted_at?: string | null;
+  created_at?: string | null;
+};
+
+export type SympathyMessageInput = {
+  obituary_source_id: string;
+  author_name: string;
+  author_email: string;
+  author_phone?: string;
+  message: string;
+  website?: string;
+};
+
 export type ApiListResponse<T> = {
   data: T[];
   meta?: Record<string, unknown>;

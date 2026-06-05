@@ -1,8 +1,8 @@
-import { ArrowLeft, Bell, BellOff, Download, ExternalLink, Home, Mail, MapPin, Newspaper, Phone, Share2, X } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
-import { fetchObituaries, fetchObituary, fetchPublicConfig } from './api';
+import { ArrowLeft, Bell, BellOff, Download, ExternalLink, Home, Mail, MapPin, Newspaper, Phone, Search, Share2, X } from 'lucide-react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { fetchObituaries, fetchObituary, fetchPublicConfig, fetchSympathyMessages, submitSympathyMessage } from './api';
 import { disablePushNotifications, enablePushNotifications, getCurrentSubscription, supportsPush } from './push';
-import type { Obituary, PublicConfig } from './types';
+import type { Obituary, PublicConfig, SympathyMessage } from './types';
 
 type Route =
   | { name: 'home' }
@@ -47,6 +47,13 @@ function formatDate(value?: string | null): string {
   return new Intl.DateTimeFormat('fr-CA', { day: 'numeric', month: 'long', year: 'numeric' }).format(date);
 }
 
+function normalizeSearch(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+}
+
 function go(path: string) {
   window.location.hash = path;
 }
@@ -79,6 +86,8 @@ function App() {
   const [obituaries, setObituaries] = useState<Obituary[]>([]);
   const [selected, setSelected] = useState<Obituary | null>(null);
   const [loading, setLoading] = useState(true);
+  const [obituaryListLoading, setObituaryListLoading] = useState(false);
+  const [allObituariesLoaded, setAllObituariesLoaded] = useState(false);
   const [notice, setNotice] = useState('');
   const [pushEnabled, setPushEnabled] = useState(false);
   const [installPlatform, setInstallPlatform] = useState<InstallPlatform>('other');
@@ -101,6 +110,21 @@ function App() {
       .catch((error) => setNotice(error instanceof Error ? error.message : 'Une erreur est survenue.'))
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    if (route.name !== 'obituaries' || allObituariesLoaded || obituaryListLoading) {
+      return;
+    }
+
+    setObituaryListLoading(true);
+    fetchObituaries(5000, { sync: true })
+      .then((items) => {
+        setObituaries(items);
+        setAllObituariesLoaded(true);
+      })
+      .catch((error) => setNotice(error instanceof Error ? error.message : 'Impossible de charger tous les avis.'))
+      .finally(() => setObituaryListLoading(false));
+  }, [allObituariesLoaded, obituaryListLoading, route.name]);
 
   useEffect(() => {
     if (!supportsPush()) {
@@ -253,7 +277,7 @@ function App() {
           />
         ) : null}
 
-        {route.name === 'obituaries' ? <ObituaryList items={obituaries} loading={loading} /> : null}
+        {route.name === 'obituaries' ? <ObituaryDirectory items={obituaries} loading={loading || obituaryListLoading} allLoaded={allObituariesLoaded} /> : null}
 
         {route.name === 'detail' ? (
           <ObituaryDetail item={selected} loading={loading} onShare={shareObituary} />
@@ -417,13 +441,78 @@ function InstallHelpDialog({ platform, onClose }: { platform: InstallPlatform; o
   );
 }
 
-function ObituaryList({ items, loading, compact = false }: { items: Obituary[]; loading: boolean; compact?: boolean }) {
+function ObituaryDirectory({ items, loading, allLoaded }: { items: Obituary[]; loading: boolean; allLoaded: boolean }) {
+  const [query, setQuery] = useState('');
+  const normalizedQuery = normalizeSearch(query.trim());
+  const filteredItems = useMemo(() => {
+    if (!normalizedQuery) {
+      return items;
+    }
+
+    return items.filter((item) => {
+      const searchable = normalizeSearch(
+        [item.person_name, item.title, item.death_date, item.published_at, item.excerpt]
+          .filter(Boolean)
+          .join(' ')
+      );
+
+      return searchable.includes(normalizedQuery);
+    });
+  }, [items, normalizedQuery]);
+
+  return (
+    <section className="space-y-4">
+      <div className="rounded border border-line bg-white p-4 shadow-soft">
+        <label className="block text-sm font-semibold uppercase tracking-wide text-rosewood" htmlFor="obituary-search">
+          Rechercher un avis
+        </label>
+        <div className="mt-2 flex min-h-12 items-center gap-2 rounded border border-line bg-paper px-3">
+          <Search className="shrink-0 text-action" size={20} />
+          <input
+            id="obituary-search"
+            className="min-h-11 flex-1 bg-transparent text-base outline-none placeholder:text-ink/45"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Nom, date, mot-clé..."
+            type="search"
+          />
+          {query ? (
+            <button className="rounded px-2 py-1 text-sm font-semibold text-action" onClick={() => setQuery('')}>
+              Effacer
+            </button>
+          ) : null}
+        </div>
+        <p className="mt-2 text-sm text-ink/65">
+          {loading && !allLoaded ? 'Chargement de tous les avis...' : `${filteredItems.length} avis affiché${filteredItems.length > 1 ? 's' : ''}`}
+        </p>
+      </div>
+
+      <ObituaryList
+        items={filteredItems}
+        loading={loading && items.length === 0}
+        emptyText={query ? 'Aucun avis ne correspond à cette recherche.' : 'Aucun avis disponible pour le moment.'}
+      />
+    </section>
+  );
+}
+
+function ObituaryList({
+  items,
+  loading,
+  compact = false,
+  emptyText = 'Aucun avis disponible pour le moment.'
+}: {
+  items: Obituary[];
+  loading: boolean;
+  compact?: boolean;
+  emptyText?: string;
+}) {
   if (loading && items.length === 0) {
     return <div className="rounded border border-line bg-white p-5 text-sm text-ink/70">Chargement des avis...</div>;
   }
 
   if (items.length === 0) {
-    return <div className="rounded border border-line bg-white p-5 text-sm text-ink/70">Aucun avis disponible pour le moment.</div>;
+    return <div className="rounded border border-line bg-white p-5 text-sm text-ink/70">{emptyText}</div>;
   }
 
   return (
@@ -506,7 +595,166 @@ function ObituaryDetail({
           <p key={index}>{paragraph.replace(/\s+/g, ' ').trim()}</p>
         ))}
       </section>
+
+      <SympathySection sourceId={item.source_id || String(item.id)} />
     </article>
+  );
+}
+
+function SympathySection({ sourceId }: { sourceId: string }) {
+  const [messages, setMessages] = useState<SympathyMessage[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [form, setForm] = useState({
+    author_name: '',
+    author_email: '',
+    author_phone: '',
+    message: '',
+    website: ''
+  });
+
+  useEffect(() => {
+    if (!sourceId) {
+      setMessages([]);
+      return;
+    }
+
+    let active = true;
+    setLoading(true);
+    setError('');
+    fetchSympathyMessages(sourceId)
+      .then((items) => {
+        if (active) {
+          setMessages(items);
+        }
+      })
+      .catch((requestError) => {
+        if (active) {
+          setError(requestError instanceof Error ? requestError.message : 'Impossible de charger les messages.');
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [sourceId]);
+
+  function updateField(field: keyof typeof form, value: string) {
+    setForm((current) => ({ ...current, [field]: value }));
+  }
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError('');
+    setSuccess('');
+    setSubmitting(true);
+
+    try {
+      await submitSympathyMessage({ obituary_source_id: sourceId, ...form });
+      setSuccess('Votre message a été reçu. Il sera publié après approbation.');
+      setForm({ author_name: '', author_email: '', author_phone: '', message: '', website: '' });
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Impossible d'envoyer le message.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <section className="rounded border border-line bg-white p-5 shadow-soft">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-sm font-semibold uppercase tracking-wide text-rosewood">Livre de sympathies</p>
+          <h2 className="mt-1 text-2xl font-semibold">Messages de sympathie</h2>
+        </div>
+        <p className="text-sm text-ink/65">Les nouveaux messages sont approuvés avant publication.</p>
+      </div>
+
+      <div className="mt-5 space-y-3">
+        {loading ? <p className="rounded border border-line bg-paper p-4 text-sm text-ink/70">Chargement des messages...</p> : null}
+        {!loading && messages.length === 0 ? (
+          <p className="rounded border border-line bg-paper p-4 text-sm text-ink/70">
+            Aucun message actuellement dans le livre de sympathies. Soyez le premier à laisser un message.
+          </p>
+        ) : null}
+        {messages.map((message) => (
+          <article key={`${message.id}-${message.posted_at || message.created_at}`} className="rounded border border-line bg-paper p-4">
+            <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+              <h3 className="font-semibold">{message.author_name || 'Anonyme'}</h3>
+              <p className="text-sm text-rosewood">{formatDate(message.posted_at || message.created_at)}</p>
+            </div>
+            <p className="mt-3 whitespace-pre-line leading-7 text-ink/75">{message.message}</p>
+          </article>
+        ))}
+      </div>
+
+      <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="block text-sm font-semibold">
+            Nom
+            <input
+              className="mt-2 min-h-12 w-full rounded border border-line bg-white px-3 font-normal outline-none focus:border-action"
+              value={form.author_name}
+              onChange={(event) => updateField('author_name', event.target.value)}
+              autoComplete="name"
+              required
+            />
+          </label>
+          <label className="block text-sm font-semibold">
+            Courriel
+            <input
+              className="mt-2 min-h-12 w-full rounded border border-line bg-white px-3 font-normal outline-none focus:border-action"
+              type="email"
+              value={form.author_email}
+              onChange={(event) => updateField('author_email', event.target.value)}
+              autoComplete="email"
+              required
+            />
+          </label>
+        </div>
+        <label className="block text-sm font-semibold">
+          Téléphone
+          <input
+            className="mt-2 min-h-12 w-full rounded border border-line bg-white px-3 font-normal outline-none focus:border-action"
+            type="tel"
+            value={form.author_phone}
+            onChange={(event) => updateField('author_phone', event.target.value)}
+            autoComplete="tel"
+          />
+        </label>
+        <label className="block text-sm font-semibold">
+          Message
+          <textarea
+            className="mt-2 min-h-36 w-full rounded border border-line bg-white px-3 py-3 font-normal outline-none focus:border-action"
+            value={form.message}
+            onChange={(event) => updateField('message', event.target.value)}
+            maxLength={2000}
+            required
+          />
+        </label>
+        <input
+          className="hidden"
+          tabIndex={-1}
+          autoComplete="off"
+          value={form.website}
+          onChange={(event) => updateField('website', event.target.value)}
+        />
+
+        {success ? <p className="rounded border border-action/30 bg-action/10 p-3 text-sm font-medium text-action">{success}</p> : null}
+        {error ? <p className="rounded border border-rosewood/30 bg-rosewood/10 p-3 text-sm font-medium text-rosewood">{error}</p> : null}
+
+        <button className="inline-flex min-h-12 w-full items-center justify-center rounded bg-action px-5 font-semibold text-white sm:w-auto" disabled={submitting}>
+          {submitting ? 'Envoi...' : 'Ajouter un message'}
+        </button>
+      </form>
+    </section>
   );
 }
 

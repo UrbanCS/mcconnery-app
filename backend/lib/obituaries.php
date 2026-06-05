@@ -222,7 +222,7 @@ function fetch_joomla_db_obituaries(int $limit = 20): array
          LIMIT :limit"
     );
     $stmt->bindValue(':catid', $categoryId, PDO::PARAM_INT);
-    $stmt->bindValue(':limit', max(1, min(200, $limit)), PDO::PARAM_INT);
+    $stmt->bindValue(':limit', max(1, min(5000, $limit)), PDO::PARAM_INT);
     $stmt->execute();
 
     $items = [];
@@ -320,20 +320,45 @@ function upsert_obituary_snapshot(array $item): array
     return find_obituary_by_id((string)$pdo->lastInsertId()) ?: $item;
 }
 
-function list_obituaries(int $limit = 20): array
+function list_obituaries(int $limit = 20, string $search = ''): array
 {
-    $limit = max(1, min(50, $limit));
+    $limit = max(1, min(5000, $limit));
+    $search = clean_text($search);
+    $terms = array_slice(array_filter(preg_split('/\s+/', $search) ?: []), 0, 6);
+    $where = '';
+    $params = [];
+
+    if ($terms !== []) {
+        $parts = [];
+        foreach ($terms as $index => $term) {
+            $key = ':q' . $index;
+            $parts[] = "(source_id LIKE {$key}
+                OR title LIKE {$key}
+                OR person_name LIKE {$key}
+                OR excerpt LIKE {$key}
+                OR content LIKE {$key}
+                OR death_date LIKE {$key}
+                OR published_at LIKE {$key})";
+            $params[$key] = '%' . $term . '%';
+        }
+        $where = 'WHERE ' . implode(' AND ', $parts);
+    }
+
     $stmt = db()->prepare(
-        'SELECT id, source_id, source_url, title, person_name, excerpt, image_url, death_date, published_at, created_at
+        "SELECT id, source_id, source_url, title, person_name, excerpt, image_url, death_date, published_at, created_at
          FROM obituary_snapshots
+         {$where}
          ORDER BY CASE WHEN death_date IS NULL THEN 1 ELSE 0 END ASC,
                   death_date DESC,
                   published_at DESC,
                   CAST(source_id AS UNSIGNED) DESC,
                   created_at DESC,
                   id DESC
-         LIMIT :limit'
+         LIMIT :limit"
     );
+    foreach ($params as $key => $value) {
+        $stmt->bindValue($key, $value, PDO::PARAM_STR);
+    }
     $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
     $stmt->execute();
 

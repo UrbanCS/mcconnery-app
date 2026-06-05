@@ -16,13 +16,14 @@ date_default_timezone_set('America/Toronto');
 $vendor = __DIR__ . '/vendor/autoload.php';
 if (file_exists($vendor)) {
     require_once $vendor;
-} else {
-    require_once __DIR__ . '/lib/dates.php';
-    require_once __DIR__ . '/lib/http.php';
-    require_once __DIR__ . '/lib/database.php';
-    require_once __DIR__ . '/lib/obituaries.php';
-    require_once __DIR__ . '/lib/push.php';
 }
+
+require_once __DIR__ . '/lib/dates.php';
+require_once __DIR__ . '/lib/http.php';
+require_once __DIR__ . '/lib/database.php';
+require_once __DIR__ . '/lib/obituaries.php';
+require_once __DIR__ . '/lib/push.php';
+require_once __DIR__ . '/lib/sympathy.php';
 
 function app_config(?string $key = null, mixed $default = null): mixed
 {

@@ -49,6 +49,32 @@ CREATE TABLE IF NOT EXISTS notification_logs (
     ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS sympathy_messages (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  obituary_id BIGINT UNSIGNED NULL,
+  obituary_source_id VARCHAR(120) NOT NULL,
+  source_system VARCHAR(80) NOT NULL DEFAULT 'pwa',
+  source_key CHAR(64) NOT NULL,
+  author_name VARCHAR(255) NOT NULL,
+  author_email VARCHAR(255) NULL,
+  author_phone VARCHAR(80) NULL,
+  message TEXT NOT NULL,
+  status VARCHAR(20) NOT NULL DEFAULT 'pending',
+  posted_at DATETIME NULL,
+  ip_hash CHAR(64) NULL,
+  user_agent VARCHAR(255) NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uniq_sympathy_source_key (source_key),
+  KEY idx_sympathy_obituary_source (obituary_source_id),
+  KEY idx_sympathy_obituary (obituary_id),
+  KEY idx_sympathy_status_posted (status, posted_at),
+  CONSTRAINT fk_sympathy_obituary
+    FOREIGN KEY (obituary_id) REFERENCES obituary_snapshots(id)
+    ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS migration_logs (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   source_system VARCHAR(80) NOT NULL,

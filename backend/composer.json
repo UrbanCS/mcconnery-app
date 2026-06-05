@@ -16,7 +16,8 @@
       "lib/http.php",
       "lib/database.php",
       "lib/obituaries.php",
-      "lib/push.php"
+      "lib/push.php",
+      "lib/sympathy.php"
     ]
   }
 }

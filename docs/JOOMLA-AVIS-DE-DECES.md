@@ -80,7 +80,7 @@ Ne pas ajouter `--update-existing` pour les imports incrementaux.
 
 ## Importer les messages de sympathie
 
-Les messages de l'ancien livre de sympathies peuvent etre importes dans la PWA. Les messages importes sont marques comme **approved**. Les nouveaux messages envoyes depuis la PWA sont marques comme **pending** pour approbation.
+Les messages de l'ancien livre de sympathies peuvent etre importes dans la PWA. Les messages importes sont marques comme **approved**. Les nouveaux messages envoyes depuis la PWA ou le widget Joomla sont marques comme **pending** pour approbation.
 
 Importer les messages d'un seul avis:
 
@@ -98,7 +98,30 @@ php migration/import-sympathy-messages.php --limit=50
 php migration/import-sympathy-messages.php --limit=50 --apply
 ```
 
-Le formulaire de sympathie dans la PWA ajoute les messages dans `sympathy_messages` avec le statut `pending`. Pour publier un message, changer son statut a `approved` dans la base de donnees.
+## Moderer les messages de sympathie dans Joomla
+
+Une interface de moderation peut etre installee dans l'administration Joomla. Elle affiche les messages en attente et permet de les **approuver**, **modifier**, **refuser** ou **supprimer** sans passer par phpMyAdmin.
+
+Uploader les fichiers mis a jour dans `public_html/pwa`, puis depuis le dossier `pwa` sur cPanel:
+
+```bash
+php migration/install-joomla-sympathy-admin.php
+php migration/install-joomla-sympathy-admin.php --apply
+```
+
+Le script installe le fichier suivant dans Joomla:
+
+```text
+administrator/mcconnery-sympathies.php
+```
+
+Ouvrir ensuite l'administration Joomla, puis aller directement a:
+
+```text
+https://mcconnery.ca/administrator/mcconnery-sympathies.php
+```
+
+Il faut etre connecte a Joomla avec un compte autorise. Les messages approuves passent au statut `approved` et deviennent visibles sur la PWA et sur les fiches Joomla.
 
 ## Afficher les messages sur les fiches Joomla
 

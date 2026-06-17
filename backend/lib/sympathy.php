@@ -125,6 +125,216 @@ function list_sympathy_messages(string $sourceId, bool $includePending = false):
     return $stmt->fetchAll();
 }
 
+function sympathy_admin_allowed_statuses(): array
+{
+    return ['pending', 'approved', 'rejected'];
+}
+
+function sympathy_admin_normalize_status(string $status): string
+{
+    $status = strtolower(trim($status));
+
+    return in_array($status, sympathy_admin_allowed_statuses(), true) ? $status : 'pending';
+}
+
+function list_sympathy_messages_for_admin(string $status = 'pending', string $search = '', int $limit = 200): array
+{
+    ensure_sympathy_messages_table();
+
+    $status = strtolower(trim($status));
+    $search = sympathy_clean_field($search, 120);
+    $where = [];
+    $params = [];
+
+    if ($status !== '' && $status !== 'all') {
+        $where[] = 'sm.status = :status';
+        $params['status'] = sympathy_admin_normalize_status($status);
+    }
+
+    if ($search !== '') {
+        $where[] = '(sm.author_name LIKE :search
+            OR sm.author_email LIKE :search
+            OR sm.author_phone LIKE :search
+            OR sm.message LIKE :search
+            OR sm.obituary_source_id LIKE :search
+            OR o.person_name LIKE :search
+            OR o.title LIKE :search)';
+        $params['search'] = '%' . str_replace(['%', '_'], ['\\%', '\\_'], $search) . '%';
+    }
+
+    $whereSql = $where ? 'WHERE ' . implode(' AND ', $where) : '';
+    $limit = max(1, min(500, $limit));
+
+    $stmt = db()->prepare(
+        "SELECT
+            sm.id,
+            sm.obituary_id,
+            sm.obituary_source_id,
+            sm.source_system,
+            sm.author_name,
+            sm.author_email,
+            sm.author_phone,
+            sm.message,
+            sm.status,
+            sm.posted_at,
+            sm.created_at,
+            sm.updated_at,
+            o.person_name AS obituary_person_name,
+            o.title AS obituary_title,
+            o.source_url AS obituary_source_url,
+            (
+                SELECT ml.target_id
+                FROM migration_logs ml
+                WHERE ml.source_system = 'wordpress'
+                  AND ml.source_id = sm.obituary_source_id
+                  AND ml.target_system = 'joomla'
+                  AND ml.status = 'success'
+                  AND ml.target_id <> ''
+                ORDER BY ml.id DESC
+                LIMIT 1
+            ) AS obituary_joomla_article_id
+         FROM sympathy_messages sm
+         LEFT JOIN obituary_snapshots o ON o.source_id = sm.obituary_source_id
+         {$whereSql}
+         ORDER BY FIELD(sm.status, 'pending', 'approved', 'rejected'),
+            COALESCE(sm.posted_at, sm.created_at) DESC,
+            sm.id DESC
+         LIMIT :limit"
+    );
+    foreach ($params as $key => $value) {
+        $stmt->bindValue(':' . $key, $value);
+    }
+    $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+    $stmt->execute();
+
+    return $stmt->fetchAll();
+}
+
+function sympathy_admin_counts(): array
+{
+    ensure_sympathy_messages_table();
+
+    $counts = ['pending' => 0, 'approved' => 0, 'rejected' => 0, 'all' => 0];
+    $stmt = db()->query('SELECT status, COUNT(*) AS total FROM sympathy_messages GROUP BY status');
+    foreach ($stmt->fetchAll() as $row) {
+        $status = sympathy_admin_normalize_status((string)$row['status']);
+        $total = (int)$row['total'];
+        $counts[$status] = ($counts[$status] ?? 0) + $total;
+        $counts['all'] += $total;
+    }
+
+    return $counts;
+}
+
+function get_sympathy_message_for_admin(int $id): ?array
+{
+    ensure_sympathy_messages_table();
+
+    $stmt = db()->prepare(
+        "SELECT
+            sm.id,
+            sm.obituary_id,
+            sm.obituary_source_id,
+            sm.source_system,
+            sm.author_name,
+            sm.author_email,
+            sm.author_phone,
+            sm.message,
+            sm.status,
+            sm.posted_at,
+            sm.created_at,
+            sm.updated_at,
+            o.person_name AS obituary_person_name,
+            o.title AS obituary_title,
+            o.source_url AS obituary_source_url,
+            (
+                SELECT ml.target_id
+                FROM migration_logs ml
+                WHERE ml.source_system = 'wordpress'
+                  AND ml.source_id = sm.obituary_source_id
+                  AND ml.target_system = 'joomla'
+                  AND ml.status = 'success'
+                  AND ml.target_id <> ''
+                ORDER BY ml.id DESC
+                LIMIT 1
+            ) AS obituary_joomla_article_id
+         FROM sympathy_messages sm
+         LEFT JOIN obituary_snapshots o ON o.source_id = sm.obituary_source_id
+         WHERE sm.id = :id
+         LIMIT 1"
+    );
+    $stmt->execute(['id' => $id]);
+    $message = $stmt->fetch();
+
+    return is_array($message) ? $message : null;
+}
+
+function update_sympathy_message_for_admin(int $id, array $data): void
+{
+    ensure_sympathy_messages_table();
+
+    $authorName = sympathy_clean_field($data['author_name'] ?? '', 255);
+    $authorEmail = sympathy_clean_field($data['author_email'] ?? '', 255);
+    $authorPhone = sympathy_clean_field($data['author_phone'] ?? '', 80);
+    $message = sympathy_clean_field($data['message'] ?? '', 4000);
+    $status = sympathy_admin_normalize_status((string)($data['status'] ?? 'pending'));
+
+    if ($id <= 0) {
+        throw new RuntimeException('Message invalide.');
+    }
+    if ($authorName === '') {
+        throw new RuntimeException('Le nom est requis.');
+    }
+    if ($message === '') {
+        throw new RuntimeException('Le message est requis.');
+    }
+
+    $stmt = db()->prepare(
+        "UPDATE sympathy_messages
+         SET author_name = :author_name,
+             author_email = :author_email,
+             author_phone = :author_phone,
+             message = :message,
+             status = :status
+         WHERE id = :id"
+    );
+    $stmt->execute([
+        'id' => $id,
+        'author_name' => $authorName,
+        'author_email' => $authorEmail !== '' ? $authorEmail : null,
+        'author_phone' => $authorPhone !== '' ? $authorPhone : null,
+        'message' => $message,
+        'status' => $status,
+    ]);
+}
+
+function set_sympathy_message_status_for_admin(int $id, string $status): void
+{
+    ensure_sympathy_messages_table();
+
+    if ($id <= 0) {
+        throw new RuntimeException('Message invalide.');
+    }
+
+    $stmt = db()->prepare('UPDATE sympathy_messages SET status = :status WHERE id = :id');
+    $stmt->execute([
+        'id' => $id,
+        'status' => sympathy_admin_normalize_status($status),
+    ]);
+}
+
+function delete_sympathy_message_for_admin(int $id): void
+{
+    ensure_sympathy_messages_table();
+
+    if ($id <= 0) {
+        throw new RuntimeException('Message invalide.');
+    }
+
+    $stmt = db()->prepare('DELETE FROM sympathy_messages WHERE id = :id');
+    $stmt->execute(['id' => $id]);
+}
+
 function create_sympathy_message(array $data): array
 {
     ensure_sympathy_messages_table();

@@ -123,6 +123,26 @@ https://mcconnery.ca/administrator/mcconnery-sympathies.php
 
 Il faut etre connecte a Joomla avec un compte autorise. Les messages approuves passent au statut `approved` et deviennent visibles sur la PWA et sur les fiches Joomla.
 
+Si le client se connecte seulement dans le front-end Joomla, installer plutot la version front-end de la page de moderation:
+
+```bash
+php migration/install-joomla-sympathy-admin.php --frontend --apply
+```
+
+Le script installe alors:
+
+```text
+mcconnery-sympathies.php
+```
+
+URL:
+
+```text
+https://mcconnery.ca/mcconnery-sympathies.php
+```
+
+Cette version verifie la session front-end Joomla et redirige vers `/index.php/administrateurs` si l'utilisateur n'est pas connecte. Elle est prevue pour les comptes Joomla de type administrateur/super utilisateur.
+
 ## Afficher les messages sur les fiches Joomla
 
 Le widget `joomla-sympathy-widget.js` peut etre ajoute au template Joomla pour afficher les messages et le formulaire directement sur les pages d'articles **Avis de deces**. Il utilise la meme API que la PWA.

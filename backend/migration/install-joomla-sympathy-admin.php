@@ -40,14 +40,18 @@ function sympathy_admin_install_escape_php_string(string $value): string
 }
 
 $apply = (bool)sympathy_admin_install_arg('apply', false);
+$frontend = (bool)sympathy_admin_install_arg('frontend', false);
 $targetArg = (string)sympathy_admin_install_arg('target', '');
 $bootstrapArg = (string)sympathy_admin_install_arg('bootstrap', '');
+$loginArg = (string)sympathy_admin_install_arg('login-url', '');
 
 try {
     $joomlaRoot = sympathy_admin_install_joomla_root($migrationConfig);
     $target = $targetArg !== ''
         ? $targetArg
-        : $joomlaRoot . '/administrator/mcconnery-sympathies.php';
+        : ($frontend
+            ? $joomlaRoot . '/mcconnery-sympathies.php'
+            : $joomlaRoot . '/administrator/mcconnery-sympathies.php');
 
     $bootstrapPath = $bootstrapArg !== ''
         ? $bootstrapArg
@@ -63,14 +67,24 @@ try {
         throw new RuntimeException('Template admin introuvable: ' . $templatePath);
     }
 
-    $content = str_replace(
-        '{{PWA_BOOTSTRAP_PATH}}',
-        sympathy_admin_install_escape_php_string($bootstrapPath),
-        $template
-    );
+    $loginUrl = $loginArg !== ''
+        ? $loginArg
+        : ($frontend ? '/index.php/administrateurs' : '/administrator/index.php');
 
-    echo "Fichier admin cible: {$target}\n";
+    $content = str_replace([
+        '{{PWA_BOOTSTRAP_PATH}}',
+        '{{JOOMLA_SESSION_CLIENT_ID}}',
+        '{{MCCONNERY_LOGIN_URL}}',
+    ], [
+        sympathy_admin_install_escape_php_string($bootstrapPath),
+        $frontend ? '0' : '1',
+        sympathy_admin_install_escape_php_string($loginUrl),
+    ], $template);
+
+    echo 'Mode: ' . ($frontend ? 'front-end Joomla' : 'administration Joomla') . "\n";
+    echo "Fichier cible: {$target}\n";
     echo "Bootstrap PWA: {$bootstrapPath}\n";
+    echo "Login: {$loginUrl}\n";
 
     if ($apply) {
         if (is_file($target)) {
@@ -88,7 +102,7 @@ try {
 
         $finalSiteUrl = rtrim((string)app_config('FINAL_SITE_URL', ''), '/');
         if ($finalSiteUrl !== '') {
-            echo "URL: {$finalSiteUrl}/administrator/mcconnery-sympathies.php\n";
+            echo 'URL: ' . $finalSiteUrl . ($frontend ? '/mcconnery-sympathies.php' : '/administrator/mcconnery-sympathies.php') . "\n";
         }
     } else {
         echo "Dry-run seulement. Ajoutez --apply pour installer l'interface.\n";

@@ -15,6 +15,7 @@ function mcconnery_admin_load_joomla(): ?object
 function mcconnery_admin_load_joomla_config(): ?object
 {
     $paths = [
+        __DIR__ . '/configuration.php',
         dirname(__DIR__) . '/configuration.php',
         (defined('JPATH_ROOT') ? JPATH_ROOT : dirname(__DIR__)) . '/configuration.php',
     ];
@@ -36,6 +37,29 @@ function mcconnery_admin_joomla_table(object $config, string $name): string
     $prefix = preg_replace('/[^a-zA-Z0-9_]/', '', (string)($config->dbprefix ?? ''));
 
     return '`' . $prefix . $name . '`';
+}
+
+function mcconnery_admin_session_client_id(): int
+{
+    return {{JOOMLA_SESSION_CLIENT_ID}};
+}
+
+function mcconnery_admin_login_url(): string
+{
+    return '{{MCCONNERY_LOGIN_URL}}';
+}
+
+function mcconnery_admin_current_url(): string
+{
+    $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+    $host = (string)($_SERVER['HTTP_HOST'] ?? '');
+    $uri = (string)($_SERVER['REQUEST_URI'] ?? '');
+
+    if ($host === '') {
+        return $uri;
+    }
+
+    return $scheme . '://' . $host . $uri;
 }
 
 function mcconnery_admin_session_cookie_values(): array
@@ -73,6 +97,41 @@ function mcconnery_admin_session_token(?object $config): string
     return hash_hmac('sha256', $cookie . '|mcconnery-sympathies', $secret);
 }
 
+function mcconnery_admin_frontend_user_allowed(PDO $pdo, object $config, int $userId): bool
+{
+    if (mcconnery_admin_session_client_id() !== 0) {
+        return true;
+    }
+
+    try {
+        $stmt = $pdo->prepare(
+            'SELECT ug.id, ug.title
+             FROM ' . mcconnery_admin_joomla_table($config, 'user_usergroup_map') . ' map
+             INNER JOIN ' . mcconnery_admin_joomla_table($config, 'usergroups') . ' ug
+                ON ug.id = map.group_id
+             WHERE map.user_id = :user_id'
+        );
+        $stmt->execute(['user_id' => $userId]);
+
+        foreach ($stmt->fetchAll() as $group) {
+            $groupId = (int)($group['id'] ?? 0);
+            $title = strtolower(trim((string)($group['title'] ?? '')));
+
+            if (in_array($groupId, [6, 7, 8], true)) {
+                return true;
+            }
+
+            if (in_array($title, ['manager', 'administrator', 'administrators', 'super users', 'super user'], true)) {
+                return true;
+            }
+        }
+    } catch (Throwable) {
+        return false;
+    }
+
+    return false;
+}
+
 function mcconnery_admin_has_database_session(?object $config): bool
 {
     if (!$config) {
@@ -96,15 +155,23 @@ function mcconnery_admin_has_database_session(?object $config): bool
                 'SELECT userid, guest
                  FROM ' . mcconnery_admin_joomla_table($config, 'session') . '
                  WHERE session_id = :session_id
-                   AND client_id = 1
+                   AND client_id = :client_id
                    AND guest = 0
                    AND userid > 0
                  LIMIT 1'
             );
-            $stmt->execute(['session_id' => $sessionId]);
+            $stmt->execute([
+                'session_id' => $sessionId,
+                'client_id' => mcconnery_admin_session_client_id(),
+            ]);
             $row = $stmt->fetch();
 
             if (is_array($row) && (int)($row['userid'] ?? 0) > 0) {
+                $GLOBALS['MCCONNERY_ADMIN_FOUND_SESSION'] = true;
+                if (!mcconnery_admin_frontend_user_allowed($pdo, $config, (int)$row['userid'])) {
+                    continue;
+                }
+
                 $GLOBALS['MCCONNERY_ADMIN_SESSION_ID'] = $sessionId;
                 return true;
             }
@@ -114,6 +181,21 @@ function mcconnery_admin_has_database_session(?object $config): bool
     } catch (Throwable) {
         return false;
     }
+}
+
+function mcconnery_admin_access_denied(): never
+{
+    $loginUrl = mcconnery_admin_login_url();
+
+    if (empty($GLOBALS['MCCONNERY_ADMIN_FOUND_SESSION']) && $loginUrl !== '') {
+        $separator = str_contains($loginUrl, '?') ? '&' : '?';
+        header('Location: ' . $loginUrl . $separator . 'return=' . rawurlencode(base64_encode(mcconnery_admin_current_url())));
+        exit;
+    }
+
+    http_response_code(403);
+    echo '<!doctype html><meta charset="utf-8"><title>Acces refuse</title><p>Acces refuse. Connectez-vous avec un compte autorise.</p>';
+    exit;
 }
 
 function mcconnery_admin_is_authorized(?object $app): bool
@@ -254,9 +336,7 @@ function mcconnery_admin_obituary_url(array $row): string
 $joomlaConfig = mcconnery_admin_load_joomla_config();
 $joomlaApp = mcconnery_admin_load_joomla();
 if (!mcconnery_admin_is_authorized($joomlaApp) && !mcconnery_admin_has_database_session($joomlaConfig)) {
-    http_response_code(403);
-    echo '<!doctype html><meta charset="utf-8"><title>Acces refuse</title><p>Acces refuse. Connectez-vous a l’administration Joomla avec un compte autorise.</p>';
-    exit;
+    mcconnery_admin_access_denied();
 }
 
 $bootstrapPath = '{{PWA_BOOTSTRAP_PATH}}';

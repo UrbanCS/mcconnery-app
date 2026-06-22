@@ -21,9 +21,21 @@ if (!is_cli()) {
     require_secret('CRON_SECRET', 'HTTP_X_CRON_SECRET');
 }
 
+function cron_arg_value(string $name): ?string
+{
+    foreach ($GLOBALS['argv'] ?? [] as $arg) {
+        if (str_starts_with((string)$arg, $name . '=')) {
+            return substr((string)$arg, strlen($name) + 1);
+        }
+    }
+
+    return null;
+}
+
 $notifyInitial = in_array('--notify-initial', $argv ?? [], true) || (bool)app_config('CRON_NOTIFY_ON_FIRST_RUN', false);
 $seedOnly = in_array('--seed-only', $argv ?? [], true);
-$fetchLimit = max(1, min(200, (int)app_config('CRON_FETCH_LIMIT', 25)));
+$requestedLimit = (int)(cron_arg_value('--limit') ?? app_config('CRON_FETCH_LIMIT', 22));
+$fetchLimit = max(1, min($seedOnly ? 5000 : 200, $requestedLimit));
 
 try {
     $beforeCount = count_obituary_snapshots();

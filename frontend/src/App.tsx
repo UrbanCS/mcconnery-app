@@ -17,6 +17,8 @@ type BeforeInstallPromptEvent = Event & {
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
 };
 
+const RECENT_OBITUARY_LIMIT = 22;
+
 function parseRoute(): Route {
   const hash = window.location.hash.replace(/^#\/?/, '');
   const [page, id] = hash.split('/');
@@ -51,7 +53,9 @@ function normalizeSearch(value: string): string {
   return value
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase();
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function go(path: string) {
@@ -86,8 +90,6 @@ function App() {
   const [obituaries, setObituaries] = useState<Obituary[]>([]);
   const [selected, setSelected] = useState<Obituary | null>(null);
   const [loading, setLoading] = useState(true);
-  const [obituaryListLoading, setObituaryListLoading] = useState(false);
-  const [allObituariesLoaded, setAllObituariesLoaded] = useState(false);
   const [notice, setNotice] = useState('');
   const [pushEnabled, setPushEnabled] = useState(false);
   const [installPlatform, setInstallPlatform] = useState<InstallPlatform>('other');
@@ -102,7 +104,7 @@ function App() {
   }, []);
 
   useEffect(() => {
-    Promise.all([fetchPublicConfig(), fetchObituaries(12)])
+    Promise.all([fetchPublicConfig(), fetchObituaries(RECENT_OBITUARY_LIMIT)])
       .then(([publicConfig, items]) => {
         setConfig(publicConfig);
         setObituaries(items);
@@ -110,21 +112,6 @@ function App() {
       .catch((error) => setNotice(error instanceof Error ? error.message : 'Une erreur est survenue.'))
       .finally(() => setLoading(false));
   }, []);
-
-  useEffect(() => {
-    if (route.name !== 'obituaries' || allObituariesLoaded || obituaryListLoading) {
-      return;
-    }
-
-    setObituaryListLoading(true);
-    fetchObituaries(5000, { sync: true })
-      .then((items) => {
-        setObituaries(items);
-        setAllObituariesLoaded(true);
-      })
-      .catch((error) => setNotice(error instanceof Error ? error.message : 'Impossible de charger tous les avis.'))
-      .finally(() => setObituaryListLoading(false));
-  }, [allObituariesLoaded, obituaryListLoading, route.name]);
 
   useEffect(() => {
     if (!supportsPush()) {
@@ -277,7 +264,7 @@ function App() {
           />
         ) : null}
 
-        {route.name === 'obituaries' ? <ObituaryDirectory items={obituaries} loading={loading || obituaryListLoading} allLoaded={allObituariesLoaded} /> : null}
+        {route.name === 'obituaries' ? <ObituaryDirectory items={obituaries} loading={loading} /> : null}
 
         {route.name === 'detail' ? (
           <ObituaryDetail item={selected} loading={loading} onShare={shareObituary} />
@@ -441,17 +428,25 @@ function InstallHelpDialog({ platform, onClose }: { platform: InstallPlatform; o
   );
 }
 
-function ObituaryDirectory({ items, loading, allLoaded }: { items: Obituary[]; loading: boolean; allLoaded: boolean }) {
+function ObituaryDirectory({ items, loading }: { items: Obituary[]; loading: boolean }) {
   const [query, setQuery] = useState('');
-  const normalizedQuery = normalizeSearch(query.trim());
-  const filteredItems = useMemo(() => {
-    if (!normalizedQuery) {
+  const normalizedQuery = normalizeSearch(query);
+  const visibleItems = useMemo(() => {
+    if (normalizedQuery === '') {
       return items;
     }
 
     return items.filter((item) => {
       const searchable = normalizeSearch(
-        [item.person_name, item.title, item.death_date, item.published_at, item.excerpt]
+        [
+          item.source_id,
+          item.title,
+          item.person_name,
+          item.death_date,
+          item.published_at,
+          item.excerpt,
+          item.content,
+        ]
           .filter(Boolean)
           .join(' ')
       );
@@ -460,37 +455,48 @@ function ObituaryDirectory({ items, loading, allLoaded }: { items: Obituary[]; l
     });
   }, [items, normalizedQuery]);
 
+  function handleSearch(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+  }
+
   return (
     <section className="space-y-4">
-      <div className="rounded border border-line bg-white p-4 shadow-soft">
-        <label className="block text-sm font-semibold uppercase tracking-wide text-rosewood" htmlFor="obituary-search">
+      <form className="rounded border border-line bg-white p-4 shadow-soft" onSubmit={handleSearch}>
+        <label className="text-sm font-semibold uppercase tracking-wide text-rosewood" htmlFor="obituary-search">
           Rechercher un avis
         </label>
-        <div className="mt-2 flex min-h-12 items-center gap-2 rounded border border-line bg-paper px-3">
-          <Search className="shrink-0 text-action" size={20} />
-          <input
-            id="obituary-search"
-            className="min-h-11 flex-1 bg-transparent text-base outline-none placeholder:text-ink/45"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Nom, date, mot-clé..."
-            type="search"
-          />
-          {query ? (
-            <button className="rounded px-2 py-1 text-sm font-semibold text-action" onClick={() => setQuery('')}>
-              Effacer
-            </button>
-          ) : null}
+        <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+          <div className="relative flex-1">
+            <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-action" size={20} />
+            <input
+              id="obituary-search"
+              className="min-h-12 w-full rounded border border-line bg-paper py-2 pl-10 pr-3 text-base outline-none focus:border-action"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Nom, date, mot-clé..."
+              type="search"
+            />
+          </div>
+          <button className="inline-flex min-h-12 items-center justify-center gap-2 rounded bg-action px-5 font-semibold text-white" type="submit">
+            <Search size={18} />
+            Rechercher
+          </button>
         </div>
-        <p className="mt-2 text-sm text-ink/65">
-          {loading && !allLoaded ? 'Chargement de tous les avis...' : `${filteredItems.length} avis affiché${filteredItems.length > 1 ? 's' : ''}`}
-        </p>
-      </div>
+        {query.trim() !== '' ? (
+          <button className="mt-3 text-sm font-semibold text-action" type="button" onClick={() => {
+            setQuery('');
+          }}>
+            Effacer la recherche
+          </button>
+        ) : null}
+      </form>
+
+      <h1 className="text-2xl font-semibold">{normalizedQuery !== '' ? 'Résultats de recherche' : 'Avis récents'}</h1>
 
       <ObituaryList
-        items={filteredItems}
-        loading={loading && items.length === 0}
-        emptyText={query ? 'Aucun avis ne correspond à cette recherche.' : 'Aucun avis disponible pour le moment.'}
+        items={visibleItems}
+        loading={loading && visibleItems.length === 0}
+        emptyText={normalizedQuery !== '' ? 'Aucun avis récent ne correspond à cette recherche.' : 'Aucun avis disponible pour le moment.'}
       />
     </section>
   );

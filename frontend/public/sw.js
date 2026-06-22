@@ -1,4 +1,4 @@
-const CACHE_NAME = 'mcconnery-pwa-v4';
+const CACHE_NAME = 'mcconnery-pwa-v7';
 const APP_SHELL = ['./', './manifest.webmanifest', './icon.svg'];
 
 self.addEventListener('install', (event) => {

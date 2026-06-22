@@ -9,12 +9,18 @@ handle_options();
 try {
     $limit = max(1, min(5000, (int)($_GET['limit'] ?? 12)));
     $search = clean_text((string)($_GET['q'] ?? ''));
-    $sync = filter_var($_GET['sync'] ?? false, FILTER_VALIDATE_BOOLEAN);
+    $source = (string)app_config('OBITUARY_SOURCE');
+    $syncParam = strtolower(trim((string)($_GET['sync'] ?? '')));
+    $syncRequested = in_array($syncParam, ['1', 'true', 'yes'], true);
+    $cacheCount = (int)db()->query('SELECT COUNT(*) FROM obituary_snapshots')->fetchColumn();
+    $synced = false;
 
-    if (($sync || count_obituary_snapshots() === 0) && app_config('OBITUARY_SOURCE') !== 'database') {
+    if ($source !== 'database' && ($syncRequested || $cacheCount === 0)) {
         foreach (fetch_configured_obituaries($limit) as $sourceItem) {
             upsert_obituary_snapshot($sourceItem);
         }
+
+        $synced = true;
     }
 
     $items = list_obituaries($limit, $search);
@@ -25,7 +31,8 @@ try {
             'count' => count($items),
             'query' => $search,
             'limit' => $limit,
-            'source' => app_config('OBITUARY_SOURCE'),
+            'source' => $source,
+            'synced' => $synced,
         ],
     ]);
 } catch (Throwable $error) {

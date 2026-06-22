@@ -66,6 +66,21 @@ Pour que la PWA puisse recuperer tous les avis du nouveau site Joomla, verifier 
 
 Les valeurs `JOOMLA_DB_HOST`, `JOOMLA_DB_NAME`, `JOOMLA_DB_USER`, `JOOMLA_DB_PASS`, `JOOMLA_TABLE_PREFIX` et `JOOMLA_CATEGORY_ID` doivent aussi etre configurees.
 
+Apres la bascule officielle vers Joomla, remplir la table PWA avec tout l'historique Joomla sans envoyer de notifications:
+
+```bash
+cd ~/domains/mcconnery.ca/public_html/pwa
+php cron/check-obituaries.php --seed-only --limit=5000
+```
+
+Ensuite, garder le cron normal actif. Il verifiera les nouveaux avis Joomla et enverra les notifications seulement pour les avis qui n'existent pas encore dans la PWA:
+
+```bash
+/usr/local/bin/php /home/mcconneryweb/domains/mcconnery.ca/public_html/pwa/cron/check-obituaries.php
+```
+
+Frequence conseillee: toutes les 15 a 30 minutes.
+
 ## Importer les nouveaux avis de l'ancien site
 
 Depuis le dossier `pwa` sur cPanel:

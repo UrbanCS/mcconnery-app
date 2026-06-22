@@ -115,8 +115,17 @@ Premier passage: le script alimente la table sans notification, sauf option `--n
 15. Basculer vers Joomla apres lancement:
 
 - Garder l'application sur `mcconnery.ca/pwa`.
-- Configurer Joomla comme source future ou continuer a remplir `obituary_snapshots`.
-- Mettre a jour `FINAL_SITE_URL`, `JOOMLA_API_BASE` et les URLs de contact.
+- Mettre `OBITUARY_SOURCE=joomla_db` dans `public_html/pwa/config/config.php`.
+- Remplir `JOOMLA_DB_HOST`, `JOOMLA_DB_NAME`, `JOOMLA_DB_USER`, `JOOMLA_DB_PASS`, `JOOMLA_TABLE_PREFIX` et `JOOMLA_CATEGORY_ID`.
+- Verifier que `APP_BASE_URL=https://mcconnery.ca/pwa` et `FINAL_SITE_URL=https://mcconnery.ca`.
+- Alimenter l'historique complet sans notification:
+
+```bash
+cd ~/domains/mcconnery.ca/public_html/pwa
+php cron/check-obituaries.php --seed-only --limit=5000
+```
+
+- Garder le cron normal actif toutes les 15 a 30 minutes pour notifier les nouveaux avis Joomla.
 
 ## Compatibilite iPhone et Android
 

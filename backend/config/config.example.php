@@ -21,10 +21,16 @@ return [
     'JOOMLA_DB_PASS' => '',
     'JOOMLA_TABLE_PREFIX' => '',
     'JOOMLA_CATEGORY_ID' => 0,
+    'JOOMLA_SCAN_LIMIT' => 250,
 
+    // Avant lancement Joomla: wordpress_rss. Apres lancement officiel: joomla_db.
     'OBITUARY_SOURCE' => 'wordpress_rss',
     'CRON_NOTIFY_ON_FIRST_RUN' => false,
-    'CRON_FETCH_LIMIT' => 25,
+    'CRON_FETCH_LIMIT' => 22,
+    'PWA_RECENT_MIN_DEATH_DATE' => '2026-01-01',
+    'PWA_RECENT_SOURCE_ID_MIN' => 2500,
+    'PWA_RECENT_EXCLUDE_TITLES' => ['Marie-Paule Hins Mahoney'],
+    'PWA_RECENT_FALLBACK_TITLES' => ['Rodolphe Huneault', 'Kenneth Gabie'],
 
     'VAPID_PUBLIC_KEY' => '',
     'VAPID_PRIVATE_KEY' => '',

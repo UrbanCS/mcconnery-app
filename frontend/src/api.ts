@@ -28,7 +28,7 @@ export async function fetchPublicConfig(): Promise<PublicConfig> {
   return response.data;
 }
 
-export async function fetchObituaries(limit = 12, options: { search?: string; sync?: boolean } = {}): Promise<Obituary[]> {
+export async function fetchObituaries(limit = 22, options: { search?: string; sync?: boolean } = {}): Promise<Obituary[]> {
   const params = new URLSearchParams({ limit: String(limit) });
   if (options.search) {
     params.set('q', options.search);

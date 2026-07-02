@@ -112,6 +112,15 @@
       .replace(/'/g, '&#039;');
   }
 
+  function readableError(error, fallback) {
+    const message = error && error.message ? String(error.message) : '';
+    if (message === 'Failed to fetch' || message === 'Load failed') {
+      return "Impossible de joindre le livre de sympathies. Veuillez réessayer.";
+    }
+
+    return message || fallback;
+  }
+
   function formatDate(value) {
     if (!value) {
       return '';
@@ -355,7 +364,7 @@
           mount,
           sourceId,
           messages,
-          '<p class="' + MOUNT_CLASS + '__error">' + escapeHtml(error.message || "Impossible d'envoyer le message.") + '</p>'
+          '<p class="' + MOUNT_CLASS + '__error">' + escapeHtml(readableError(error, "Impossible d'envoyer le message.")) + '</p>'
         );
       }
     });
@@ -387,7 +396,7 @@
       }
       render(mount, sourceId, Array.isArray(result.data) ? result.data : []);
     } catch (error) {
-      mount.innerHTML = '<p class="' + MOUNT_CLASS + '__error">' + escapeHtml(error.message || 'Impossible de charger les messages.') + '</p>';
+      mount.innerHTML = '<p class="' + MOUNT_CLASS + '__error">' + escapeHtml(readableError(error, 'Impossible de charger les messages.')) + '</p>';
     }
   }
 

@@ -8,14 +8,75 @@ function send_json(mixed $payload, int $status = 200): never
     header('Content-Type: application/json; charset=utf-8');
     header('Cache-Control: no-store');
 
-    if (isset($_SERVER['HTTP_ORIGIN']) && preg_match('/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/', $_SERVER['HTTP_ORIGIN'])) {
-        header('Access-Control-Allow-Origin: ' . $_SERVER['HTTP_ORIGIN']);
+    $corsOrigin = allowed_cors_origin((string)($_SERVER['HTTP_ORIGIN'] ?? ''));
+    if ($corsOrigin !== null) {
+        header('Access-Control-Allow-Origin: ' . $corsOrigin);
         header('Access-Control-Allow-Headers: Content-Type, X-Notify-Test-Secret, X-Cron-Secret');
         header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
+        header('Vary: Origin');
     }
 
     echo json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
     exit;
+}
+
+function allowed_cors_origin(string $origin): ?string
+{
+    $origin = trim($origin);
+    if ($origin === '') {
+        return null;
+    }
+
+    if (preg_match('/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/', $origin)) {
+        return $origin;
+    }
+
+    $parts = parse_url($origin);
+    $scheme = strtolower((string)($parts['scheme'] ?? ''));
+    $host = strtolower((string)($parts['host'] ?? ''));
+    $port = isset($parts['port']) ? ':' . (int)$parts['port'] : '';
+    if (($scheme !== 'http' && $scheme !== 'https') || $host === '') {
+        return null;
+    }
+
+    foreach (configured_site_hosts() as $allowedHost) {
+        if ($host === $allowedHost || $host === 'www.' . $allowedHost || preg_replace('/^www\./', '', $host) === $allowedHost) {
+            return $scheme . '://' . $host . $port;
+        }
+    }
+
+    return null;
+}
+
+function configured_site_hosts(): array
+{
+    $hosts = [];
+    $configKeys = [
+        'APP_BASE_URL',
+        'CURRENT_SITE_URL',
+        'FINAL_SITE_URL',
+        'CONTACT_URL',
+        'WORDPRESS_API_BASE',
+        'WORDPRESS_OBITUARY_FEED',
+        'JOOMLA_API_BASE',
+        'JOOMLA_OBITUARY_API',
+    ];
+
+    foreach ($configKeys as $key) {
+        $url = (string)app_config($key, '');
+        if ($url === '') {
+            continue;
+        }
+
+        $host = strtolower((string)(parse_url($url, PHP_URL_HOST) ?: ''));
+        if ($host === '') {
+            continue;
+        }
+
+        $hosts[] = preg_replace('/^www\./', '', $host) ?: $host;
+    }
+
+    return array_values(array_unique(array_filter($hosts)));
 }
 
 function handle_options(): void

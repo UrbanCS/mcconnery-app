@@ -296,7 +296,26 @@
     if (!value) {
       return '';
     }
-    const date = new Date(value.replace(' ', 'T'));
+
+    const raw = String(value).trim();
+    const localDate = raw.match(/^(\d{4})-(\d{2})-(\d{2})(?:\s+00:00:00)?$/);
+    if (localDate) {
+      const date = new Date(Number(localDate[1]), Number(localDate[2]) - 1, Number(localDate[3]));
+      return new Intl.DateTimeFormat('fr-CA', { day: 'numeric', month: 'long', year: 'numeric' }).format(date);
+    }
+
+    const localDateTime = raw.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?$/);
+    const date = localDateTime
+      ? new Date(
+          Number(localDateTime[1]),
+          Number(localDateTime[2]) - 1,
+          Number(localDateTime[3]),
+          Number(localDateTime[4]),
+          Number(localDateTime[5]),
+          Number(localDateTime[6] || 0)
+        )
+      : new Date(raw.replace(' ', 'T'));
+
     if (Number.isNaN(date.getTime())) {
       return value;
     }

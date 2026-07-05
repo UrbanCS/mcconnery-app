@@ -1,6 +1,7 @@
 (function () {
   const SCRIPT_NAME = 'joomla-sympathy-widget.js';
   const MOUNT_CLASS = 'mcconnery-sympathy-widget';
+  const FALLBACK_ARTICLE_CLASS = 'mcconnery-obituary-fallback';
 
   function currentScript() {
     return (
@@ -58,6 +59,7 @@
 
   function obituaryTitle() {
     const heading =
+      document.querySelector('.' + FALLBACK_ARTICLE_CLASS + ' h1') ||
       document.querySelector('.article-details .article-header h1') ||
       document.querySelector('.item-page .article-header h1') ||
       document.querySelector('h1[itemprop="headline"]') ||
@@ -87,6 +89,7 @@
     }
 
     const target =
+      document.querySelector('.' + FALLBACK_ARTICLE_CLASS) ||
       document.querySelector('.article-details') ||
       document.querySelector('.item-page') ||
       document.querySelector('[itemprop="articleBody"]') ||
@@ -110,6 +113,174 @@
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#039;');
+  }
+
+  function hasArticleOutput() {
+    return Boolean(
+      document.querySelector('.' + FALLBACK_ARTICLE_CLASS) ||
+        document.querySelector('.article-details') ||
+        document.querySelector('.item-page') ||
+        document.querySelector('[itemprop="articleBody"]') ||
+        document.querySelector('#sp-component article') ||
+        document.querySelector('main article')
+    );
+  }
+
+  function componentContainer() {
+    return (
+      document.querySelector('#sp-component .sp-column') ||
+      document.querySelector('#sp-component') ||
+      document.querySelector('main') ||
+      document.body
+    );
+  }
+
+  function plainTextToHtml(value) {
+    return String(value || '')
+      .split(/\n{2,}/)
+      .map((paragraph) => paragraph.trim())
+      .filter(Boolean)
+      .map((paragraph) => '<p>' + escapeHtml(paragraph).replace(/\n/g, '<br>') + '</p>')
+      .join('');
+  }
+
+  function normalizeImageUrl(value) {
+    const raw = String(value || '').trim();
+    if (!raw) {
+      return '';
+    }
+
+    const withoutJoomlaMetadata = raw.split('#joomlaImage:')[0];
+    if (/^https?:\/\//i.test(withoutJoomlaMetadata)) {
+      return withoutJoomlaMetadata;
+    }
+
+    if (withoutJoomlaMetadata.charAt(0) === '/') {
+      return window.location.origin + withoutJoomlaMetadata;
+    }
+
+    return window.location.origin + '/' + withoutJoomlaMetadata.replace(/^\/+/, '');
+  }
+
+  function normalizeObituaryPayload(result) {
+    if (result && result.data && typeof result.data === 'object') {
+      return result.data;
+    }
+    if (result && result.item && typeof result.item === 'object') {
+      return result.item;
+    }
+    return result && typeof result === 'object' ? result : null;
+  }
+
+  async function fetchObituary(sourceId) {
+    const response = await fetch(apiBase() + '/obituary.php?id=' + encodeURIComponent(sourceId), {
+      headers: { Accept: 'application/json' },
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(result.error || "Impossible de charger l'avis.");
+    }
+
+    return normalizeObituaryPayload(result);
+  }
+
+  function renderObituaryFallback(item) {
+    const container = componentContainer();
+    if (!container || document.querySelector('.' + FALLBACK_ARTICLE_CLASS)) {
+      return null;
+    }
+
+    const sourceId = item.source_id || obituarySourceId();
+    const title = item.title || item.person_name || obituaryTitle();
+    const date = item.death_date || item.published_at || item.created_at || '';
+    const imageUrl = normalizeImageUrl(item.image_url);
+    const contentHtml = plainTextToHtml(item.content || item.excerpt || '');
+    const sourceUrl = item.source_url || window.location.href;
+
+    const article = document.createElement('article');
+    article.className = FALLBACK_ARTICLE_CLASS + ' article-details';
+    if (sourceId) {
+      article.setAttribute('data-mcconnery-obituary-source-id', sourceId);
+    }
+
+    article.innerHTML = `
+      <div class="${FALLBACK_ARTICLE_CLASS}__header">
+        ${imageUrl ? '<img class="' + FALLBACK_ARTICLE_CLASS + '__image" src="' + escapeHtml(imageUrl) + '" alt="' + escapeHtml(title) + '">' : ''}
+        <div class="${FALLBACK_ARTICLE_CLASS}__summary">
+          <h1>${escapeHtml(title)}</h1>
+          ${date ? '<p class="' + FALLBACK_ARTICLE_CLASS + '__date">' + escapeHtml(formatDate(date)) + '</p>' : ''}
+          <div class="${FALLBACK_ARTICLE_CLASS}__actions">
+            <button type="button" class="${FALLBACK_ARTICLE_CLASS}__button" data-share-obituary>Partager</button>
+            <a class="${FALLBACK_ARTICLE_CLASS}__button ${FALLBACK_ARTICLE_CLASS}__button--secondary" href="${escapeHtml(sourceUrl)}">Source</a>
+          </div>
+        </div>
+      </div>
+      ${contentHtml ? '<div class="' + FALLBACK_ARTICLE_CLASS + '__content">' + contentHtml + '</div>' : ''}
+    `;
+
+    const searchModule = container.querySelector('.sp-module-content-top');
+    if (searchModule && searchModule.nextSibling) {
+      container.insertBefore(article, searchModule.nextSibling);
+    } else if (searchModule) {
+      container.appendChild(article);
+    } else {
+      container.insertBefore(article, container.firstChild);
+    }
+
+    const shareButton = article.querySelector('[data-share-obituary]');
+    if (shareButton) {
+      shareButton.addEventListener('click', async () => {
+        const shareData = { title, url: sourceUrl };
+        if (navigator.share) {
+          try {
+            await navigator.share(shareData);
+            return;
+          } catch (error) {
+            if (error && error.name === 'AbortError') {
+              return;
+            }
+          }
+        }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(sourceUrl);
+          shareButton.textContent = 'Lien copie';
+          setTimeout(() => {
+            shareButton.textContent = 'Partager';
+          }, 1800);
+        }
+      });
+    }
+
+    return article;
+  }
+
+  async function ensureObituaryFallback(sourceId) {
+    if (hasArticleOutput()) {
+      return;
+    }
+
+    const container = componentContainer();
+    if (!container) {
+      return;
+    }
+
+    const loading = document.createElement('p');
+    loading.className = FALLBACK_ARTICLE_CLASS + '__loading';
+    loading.textContent = "Chargement de l'avis...";
+    container.insertBefore(loading, container.firstChild);
+
+    try {
+      const item = await fetchObituary(sourceId);
+      if (item) {
+        renderObituaryFallback(item);
+      }
+    } catch (error) {
+      loading.textContent = readableError(error, "Impossible de charger l'avis.");
+      loading.className = FALLBACK_ARTICLE_CLASS + '__error';
+      return;
+    }
+
+    loading.remove();
   }
 
   function readableError(error, fallback) {
@@ -262,9 +433,115 @@
       .${MOUNT_CLASS}__trap {
         display: none !important;
       }
+      .${FALLBACK_ARTICLE_CLASS} {
+        clear: both;
+        margin: 28px 0 34px;
+      }
+      .${FALLBACK_ARTICLE_CLASS}__header,
+      .${FALLBACK_ARTICLE_CLASS}__content {
+        border: 1px solid var(--border_color, #ded8cf);
+        background: var(--bg_color, #fff);
+      }
+      .${FALLBACK_ARTICLE_CLASS}__header {
+        display: grid;
+        grid-template-columns: minmax(180px, 260px) minmax(0, 1fr);
+        gap: 30px;
+        align-items: start;
+        padding: 26px;
+      }
+      .${FALLBACK_ARTICLE_CLASS}__image {
+        display: block;
+        width: 100%;
+        max-height: 320px;
+        object-fit: cover;
+        border-radius: 4px;
+      }
+      .${FALLBACK_ARTICLE_CLASS} h1 {
+        margin: 0 0 10px;
+        font-size: 36px;
+        line-height: 1.15;
+      }
+      .${FALLBACK_ARTICLE_CLASS}__date {
+        margin: 0 0 20px;
+        color: #8c4646;
+        font-weight: 700;
+      }
+      .${FALLBACK_ARTICLE_CLASS}__actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+      }
+      .${FALLBACK_ARTICLE_CLASS}__button {
+        display: inline-flex;
+        min-height: 46px;
+        align-items: center;
+        justify-content: center;
+        padding: 0 22px;
+        border: 1px solid #696941;
+        border-radius: 4px;
+        background: #696941;
+        color: #fff;
+        font: inherit;
+        font-weight: 700;
+        text-decoration: none;
+        cursor: pointer;
+      }
+      .${FALLBACK_ARTICLE_CLASS}__button:hover,
+      .${FALLBACK_ARTICLE_CLASS}__button:focus {
+        color: #fff;
+        background: #555534;
+        border-color: #555534;
+      }
+      .${FALLBACK_ARTICLE_CLASS}__button--secondary {
+        background: var(--bg_color_dark, #f7f5f1);
+        color: var(--headings_color, #141623);
+        border-color: var(--border_color, #ded8cf);
+      }
+      .${FALLBACK_ARTICLE_CLASS}__button--secondary:hover,
+      .${FALLBACK_ARTICLE_CLASS}__button--secondary:focus {
+        color: var(--headings_color, #141623);
+        background: #fff;
+        border-color: #696941;
+      }
+      .${FALLBACK_ARTICLE_CLASS}__content {
+        margin-top: 22px;
+        padding: 28px;
+        font-size: 17px;
+        line-height: 1.85;
+      }
+      .${FALLBACK_ARTICLE_CLASS}__content p:last-child {
+        margin-bottom: 0;
+      }
+      .${FALLBACK_ARTICLE_CLASS}__loading,
+      .${FALLBACK_ARTICLE_CLASS}__error {
+        margin: 22px 0;
+        padding: 14px 16px;
+        border: 1px solid var(--border_color, #ded8cf);
+        background: var(--bg_color, #fff);
+      }
+      .${FALLBACK_ARTICLE_CLASS}__error {
+        border-color: rgba(140, 70, 70, 0.28);
+        background: rgba(140, 70, 70, 0.09);
+        color: #8c4646;
+        font-weight: 700;
+      }
       @media (max-width: 767.98px) {
         .${MOUNT_CLASS} {
           padding: 22px 18px;
+        }
+        .${FALLBACK_ARTICLE_CLASS}__header {
+          grid-template-columns: 1fr;
+          padding: 20px;
+        }
+        .${FALLBACK_ARTICLE_CLASS} h1 {
+          font-size: 30px;
+        }
+        .${FALLBACK_ARTICLE_CLASS}__content {
+          padding: 20px;
+          font-size: 16px;
+        }
+        .${FALLBACK_ARTICLE_CLASS}__button {
+          width: 100%;
         }
         .${MOUNT_CLASS}__grid,
         .${MOUNT_CLASS}__message-head {
@@ -380,12 +657,14 @@
       return;
     }
 
+    ensureStyles();
+    await ensureObituaryFallback(sourceId);
+
     const mount = findMount();
     if (!mount) {
       return;
     }
 
-    ensureStyles();
     mount.innerHTML = '<p class="' + MOUNT_CLASS + '__status">Chargement du livre de sympathies...</p>';
 
     try {

@@ -314,7 +314,7 @@ try {
         'order_date' => 'published',
         'show_pagination' => '1',
         'show_pagination_results' => '1',
-        'show_intro' => '0',
+        'show_intro' => '1',
         'show_readmore' => '0',
         'show_readmore_title' => '0',
         'link_titles' => '1',
@@ -324,7 +324,7 @@ try {
     $encodedParams = json_encode($newParams, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
 
     echo "Menu trouve: #{$menu['id']} {$menu['title']} ({$menu['alias']})\n";
-    echo "Reglages: leading={$leading}, intro={$intro}, columns={$columns}, links={$links}, ordre=ligne, resume=masque\n";
+    echo "Reglages: leading={$leading}, intro={$intro}, columns={$columns}, links={$links}, ordre=ligne, resume=masque en liste, intro=affichee en article\n";
 
     if ($apply) {
         $stmt = $pdo->prepare('UPDATE ' . maint_table($migrationConfig, 'menu') . ' SET params = :params WHERE id = :id');

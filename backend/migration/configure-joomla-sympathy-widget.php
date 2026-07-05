@@ -91,7 +91,7 @@ function sympathy_widget_upsert_block(string $content, string $block): string
 $apply = (bool)sympathy_widget_arg('apply', false);
 $scriptUrl = (string)sympathy_widget_arg(
     'script-url',
-    rtrim((string)app_config('APP_BASE_URL', 'https://mcconnery.ca/pwa'), '/') . '/joomla-sympathy-widget.js'
+    rtrim((string)app_config('APP_BASE_URL', 'https://mcconnery.ca/pwa'), '/') . '/joomla-sympathy-widget.js?v=20260705-article-fallback'
 );
 
 try {

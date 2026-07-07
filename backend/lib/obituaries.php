@@ -201,6 +201,114 @@ function joomla_article_url(array $row, array $config): string
     return rtrim((string)$config['FINAL_SITE_URL'], '/') . '/index.php?option=com_content&view=article&id=' . (int)$row['id'];
 }
 
+function joomla_content_table(array $config): string
+{
+    return preg_replace('/[^a-zA-Z0-9_]/', '', (string)$config['JOOMLA_TABLE_PREFIX']) . 'content';
+}
+
+function joomla_obituary_record_from_row(array $row, array $config): array
+{
+    $title = clean_text((string)$row['title']);
+    $content = clean_text((string)($row['fulltext'] ?: $row['introtext']));
+    $intro = clean_text((string)($row['introtext'] ?: $row['fulltext']));
+    $publishUp = trim((string)($row['publish_up'] ?? ''));
+    $publishedRaw = $publishUp !== '' && $publishUp !== '0000-00-00 00:00:00' ? $publishUp : (string)$row['created'];
+    $publishedAt = parse_date_or_null($publishedRaw);
+    $sourceId = joomla_article_source_id($row);
+    $combinedText = implode(' ', [
+        $title,
+        $intro,
+        $content,
+    ]);
+
+    $deathDate = extract_obituary_death_date($combinedText);
+    if ($deathDate === null && $publishedAt !== null) {
+        $deathDate = substr($publishedAt, 0, 10);
+    }
+
+    $record = [
+        'source_id' => $sourceId,
+        'source_url' => joomla_article_url($row, $config),
+        'title' => $title,
+        'person_name' => $title,
+        'excerpt' => excerpt_text($intro !== '' ? $intro : $content),
+        'content' => $content,
+        'image_url' => joomla_article_image_url($row, $config),
+        'death_date' => $deathDate,
+        'published_at' => $publishedAt,
+        'created_at' => parse_date_or_null((string)($row['created'] ?? '')),
+    ];
+    $record['content_hash'] = obituary_hash($record);
+
+    return $record;
+}
+
+function joomla_article_id_from_legacy_source_id(string $sourceId): ?int
+{
+    try {
+        $stmt = db()->prepare(
+            'SELECT target_id FROM migration_logs
+             WHERE source_system = "wordpress" AND target_system = "joomla"
+               AND source_id = :source_id AND status = "success" AND target_id <> ""
+             ORDER BY id DESC
+             LIMIT 1'
+        );
+        $stmt->execute(['source_id' => $sourceId]);
+        $targetId = $stmt->fetchColumn();
+        if (is_string($targetId) && ctype_digit($targetId)) {
+            return (int)$targetId;
+        }
+    } catch (Throwable) {
+        // Keep detail fallback conservative; plain numeric ids may be legacy ids.
+    }
+
+    return null;
+}
+
+function find_joomla_obituary_by_article_id(int $articleId): ?array
+{
+    if ($articleId <= 0) {
+        return null;
+    }
+
+    $config = joomla_source_config();
+    $categoryId = (int)$config['JOOMLA_CATEGORY_ID'];
+    if ($categoryId <= 0) {
+        return null;
+    }
+
+    $table = joomla_content_table($config);
+    $stmt = joomla_db()->prepare(
+        "SELECT id, title, alias, introtext, `fulltext`, images, created, modified, publish_up, ordering
+         FROM `{$table}`
+         WHERE id = :id
+            AND state = 1
+            AND catid = :catid
+            AND (publish_up IS NULL OR publish_up = '0000-00-00 00:00:00' OR publish_up <= CURRENT_TIMESTAMP)
+            AND (publish_down IS NULL OR publish_down = '0000-00-00 00:00:00' OR publish_down > CURRENT_TIMESTAMP)
+         LIMIT 1"
+    );
+    $stmt->bindValue(':id', $articleId, PDO::PARAM_INT);
+    $stmt->bindValue(':catid', $categoryId, PDO::PARAM_INT);
+    $stmt->execute();
+    $row = $stmt->fetch();
+
+    return $row ? joomla_obituary_record_from_row($row, $config) : null;
+}
+
+function find_joomla_obituary_by_id(string $id): ?array
+{
+    $articleId = null;
+
+    if (preg_match('/^joomla-(\d+)$/', $id, $matches)) {
+        $articleId = (int)$matches[1];
+    } elseif (ctype_digit($id)) {
+        $articleId = joomla_article_id_from_legacy_source_id($id);
+    }
+
+    return $articleId !== null ? find_joomla_obituary_by_article_id($articleId) : null;
+}
+
 function obituary_date_candidate_pattern(): string
 {
     $months = implode('|', [
@@ -916,6 +1024,12 @@ function find_obituary_by_id(string $id): ?array
     }
 
     if (!ctype_digit($id)) {
+        return null;
+    }
+
+    if (app_config('OBITUARY_SOURCE') === 'joomla_db') {
+        // In Joomla mode, numeric ids in public URLs are legacy WordPress ids.
+        // Never treat them as internal snapshot primary keys; those can collide.
         return null;
     }
 

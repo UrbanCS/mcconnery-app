@@ -13,6 +13,9 @@ try {
     }
 
     $item = find_obituary_by_id($id);
+    if (!$item && app_config('OBITUARY_SOURCE') === 'joomla_db') {
+        $item = find_joomla_obituary_by_id($id);
+    }
 
     if (!$item && app_config('OBITUARY_SOURCE') !== 'database') {
         foreach (fetch_configured_obituaries(50) as $sourceItem) {

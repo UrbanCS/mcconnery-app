@@ -9,6 +9,7 @@ Le projet est separe en deux parties:
 
 Documentation:
 
+- [Relève complète pour un nouveau Codex](docs/CODEX_HANDOFF.md)
 - [Audit et architecture](docs/AUDIT-ARCHITECTURE.md)
 - [Deploiement cPanel](docs/DEPLOIEMENT-CPANEL.md)
 - [Migration WordPress vers Joomla](docs/MIGRATION-WP-JOOMLA.md)

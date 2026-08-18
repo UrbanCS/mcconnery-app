@@ -35,11 +35,23 @@ Options utiles:
 php migration/configure-joomla-obituaries.php --apply --append-css --intro=50 --leading=0 --columns=4 --links=0
 ```
 
+Apres une mise a jour du template, Helix, JCE ou d'une extension qui touche l'affichage Joomla, relancer cette commande. Elle remet les dates visibles sous les noms, masque seulement les resumes en liste, conserve les photos en grille et force la date de publication comme date affichee.
+
 Si le script ne trouve pas le bon menu, passer l'ID du lien de menu:
 
 ```bash
 php migration/configure-joomla-obituaries.php --apply --append-css --itemid=380
 ```
+
+## Bouton Modifier en front-end
+
+Le bouton **Modifier** en front-end est gere par Joomla, pas par la PWA. Il apparait seulement si:
+
+1. l'utilisateur est connecte au front-end;
+2. le compte a les droits d'edition sur les articles/pages;
+3. les options Joomla du contenu/template autorisent les icones ou l'edition front-end.
+
+Si le bouton disparait apres une mise a jour Helix/Joomla, verifier d'abord les droits du compte et les options d'affichage des articles dans Joomla. Les scripts de la PWA ne retirent pas ce bouton.
 
 ## Recherche Joomla
 

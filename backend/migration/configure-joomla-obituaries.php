@@ -172,11 +172,12 @@ body.itemid-{$itemId}.view-category .blog .item-image img {
 
 body.itemid-{$itemId}.view-category .article-info {
     order: 3;
-    display: flex;
+    display: flex !important;
     justify-content: center;
     margin: 0 !important;
-    line-height: 1.4;
+    line-height: 1.4 !important;
     font-weight: 700;
+    font-size: 1rem !important;
 }
 
 body.itemid-{$itemId}.view-category .article-info > span:not(.published) {
@@ -192,10 +193,93 @@ body.itemid-{$itemId}.view-category .article-info i {
     display: none !important;
 }
 
-body.itemid-{$itemId}.view-category .article-introtext,
+body.itemid-{$itemId}.view-category .article-introtext {
+    order: 3;
+    display: flex !important;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+    margin: 0 !important;
+    text-align: center;
+    font-size: 0 !important;
+    line-height: 0 !important;
+}
+
+body.itemid-{$itemId}.view-category .article-introtext > :not(.article-info),
+body.itemid-{$itemId}.view-category .article-introtext > p,
+body.itemid-{$itemId}.view-category .article-introtext > ul,
+body.itemid-{$itemId}.view-category .article-introtext > ol,
+body.itemid-{$itemId}.view-category .article-introtext > div:not(.article-info),
 body.itemid-{$itemId}.view-category .readmore,
 body.itemid-{$itemId}.view-category p.readmore {
     display: none !important;
+}
+
+body.itemid-{$itemId}.view-article .article-details {
+    display: grid;
+    grid-template-columns: 260px minmax(0, 1fr);
+    column-gap: 30px;
+    align-items: start;
+}
+
+body.itemid-{$itemId}.view-article .article-full-image.item-image {
+    grid-column: 1;
+    grid-row: 1 / span 5;
+    float: none !important;
+    width: 260px;
+    max-width: 100%;
+    margin: 0 0 24px !important;
+}
+
+body.itemid-{$itemId}.view-article .article-full-image.item-image img {
+    width: 100% !important;
+    height: auto !important;
+    max-height: 420px;
+    object-fit: cover;
+    object-position: center top;
+}
+
+body.itemid-{$itemId}.view-article .article-info {
+    grid-column: 2;
+    grid-row: 2;
+    display: flex !important;
+    flex-wrap: wrap;
+    gap: 14px 20px;
+    margin: 0 0 18px !important;
+    padding: 0;
+    font-size: 0.95rem;
+}
+
+body.itemid-{$itemId}.view-article .article-info > span {
+    margin: 0 !important;
+}
+
+body.itemid-{$itemId}.view-article .article-header {
+    grid-column: 2;
+    grid-row: 1;
+    margin: 0 0 8px !important;
+}
+
+body.itemid-{$itemId}.view-article .article-can-edit {
+    grid-column: 2;
+    grid-row: 3;
+}
+
+body.itemid-{$itemId}.view-article .article-ratings-social-share {
+    grid-column: 2;
+    grid-row: 4;
+    margin: 0 0 22px !important;
+}
+
+body.itemid-{$itemId}.view-article [itemprop="articleBody"] {
+    grid-column: 2;
+    grid-row: 5;
+}
+
+body.itemid-{$itemId}.view-article .pagenavigation,
+body.itemid-{$itemId}.view-article .pager,
+body.itemid-{$itemId}.view-article #article-comments {
+    grid-column: 1 / -1;
 }
 
 @media (max-width: 991.98px) {
@@ -212,6 +296,20 @@ body.itemid-{$itemId}.view-category p.readmore {
         grid-template-columns: repeat(2, minmax(0, 1fr));
         column-gap: 24px;
         row-gap: 42px;
+    }
+
+    body.itemid-{$itemId}.view-article .article-details {
+        display: block;
+    }
+
+    body.itemid-{$itemId}.view-article .article-full-image.item-image {
+        width: 100%;
+        max-width: 320px;
+        margin: 0 0 18px !important;
+    }
+
+    body.itemid-{$itemId}.view-article .article-info {
+        margin-bottom: 12px !important;
     }
 }
 
@@ -234,6 +332,7 @@ body.itemid-{$itemId}.view-category p.readmore {
     body.itemid-{$itemId}.view-category .blog .item-image img {
         height: 150px !important;
     }
+
 }
 /* END McConnery obituary category list */
 CSS;
@@ -317,6 +416,9 @@ try {
         'show_intro' => '1',
         'show_readmore' => '0',
         'show_readmore_title' => '0',
+        'show_publish_date' => '1',
+        'show_create_date' => '0',
+        'show_modify_date' => '0',
         'link_titles' => '1',
         'link_intro_image' => '1',
     ];

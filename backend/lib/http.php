@@ -139,9 +139,11 @@ function is_cli(): bool
 
 function repair_mojibake_text(string $value): string
 {
-    if ($value === '' || !preg_match('/(?:Ã|Â|â)/u', $value)) {
+    if ($value === '' || !preg_match('/(?:Ã|Â|â|�|[\x{0080}-\x{009F}])/u', $value)) {
         return $value;
     }
+
+    $value = repair_c1_mojibake_sequences($value);
 
     $manualFixes = [
         'Ãmond' => 'Émond',
@@ -176,14 +178,56 @@ function repair_mojibake_text(string $value): string
     return mojibake_score($fixed) <= mojibake_score($value) ? $fixed : $value;
 }
 
+function repair_c1_mojibake_sequences(string $value): string
+{
+    $map = [
+        "â\xC2\x80\xC2\x98" => '‘',
+        "â\xC2\x80\xC2\x99" => '’',
+        "â\xC2\x80\xC2\x9C" => '“',
+        "â\xC2\x80\xC2\x9D" => '”',
+        "â\xC2\x80\xC2\x93" => '–',
+        "â\xC2\x80\xC2\x94" => '—',
+        "â\xC2\x80\xC2\xA6" => '…',
+        'â€˜' => '‘',
+        'â€™' => '’',
+        'â€œ' => '“',
+        'â€' => '”',
+        'â€“' => '–',
+        'â€”' => '—',
+        'â€¦' => '…',
+        'Â«' => '«',
+        'Â»' => '»',
+        'Â©' => '©',
+        'Â®' => '®',
+        'Â°' => '°',
+        'Â ' => ' ',
+    ];
+
+    $value = str_replace(array_keys($map), array_values($map), $value);
+    $value = preg_replace('/[\x{0082}\x{0091}\x{0092}]/u', '’', $value) ?? $value;
+    $value = preg_replace('/[\x{0093}\x{0094}]/u', '”', $value) ?? $value;
+    $value = preg_replace('/[\x{0096}\x{0097}]/u', '–', $value) ?? $value;
+    $value = preg_replace('/\x{0085}/u', '…', $value) ?? $value;
+    $value = preg_replace('/â(?:\x{0080}|\x{FFFD})(?:\x{0098}|\x{0099}|\x{FFFD})/u', '’', $value) ?? $value;
+    $value = preg_replace('/â(?:\x{0080}|\x{FFFD})(?:\x{009C}|\x{009D})/u', '”', $value) ?? $value;
+    $value = preg_replace('/â(?:\x{0080}|\x{FFFD})(?:\x{0093}|\x{0094})/u', '–', $value) ?? $value;
+    $value = preg_replace('/â(?:\x{0080}|\x{FFFD})(?:\x{00A6})/u', '…', $value) ?? $value;
+
+    return $value;
+}
+
 function mojibake_score(string $value): int
 {
+    $controlMatches = preg_match_all('/[\x{0080}-\x{009F}]/u', $value);
+
     return substr_count($value, 'Ã')
         + substr_count($value, 'Â')
+        + substr_count($value, 'â')
         + substr_count($value, 'â€™')
         + substr_count($value, 'â€œ')
         + substr_count($value, 'â€')
-        + substr_count($value, '�');
+        + substr_count($value, '�')
+        + (is_int($controlMatches) ? $controlMatches : 0);
 }
 
 function clean_text(string $value): string

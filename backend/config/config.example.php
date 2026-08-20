@@ -42,7 +42,7 @@ return [
     'CONTACT_PHONE' => '(819) 449-2626',
     'CONTACT_EMAIL' => 'sympathies@maisonfunerairemcconnery.ca',
     'CONTACT_ADDRESS' => '206 rue Cartier, Maniwaki (Quebec) J9E 1R3',
-    'CONTACT_URL' => 'https://mcconnery.ca/contact',
+    'CONTACT_URL' => '/index.php/coordonnees',
 
     'HTTP_TIMEOUT_SECONDS' => 20,
     'PUSH_BATCH_SIZE' => 500,

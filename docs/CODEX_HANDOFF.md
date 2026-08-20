@@ -126,17 +126,120 @@ Correspondance habituelle :
 
 ```text
 frontend/dist/*       -> public_html/pwa/
+backend/.htaccess     -> public_html/pwa/.htaccess
 backend/api/*         -> public_html/pwa/api/
 backend/cron/*        -> public_html/pwa/cron/
 backend/lib/*         -> public_html/pwa/lib/
 backend/bootstrap.php -> public_html/pwa/bootstrap.php
 backend/migration/*   -> public_html/pwa/migration/ (seulement si requis)
 vendor/*              -> public_html/pwa/vendor/ si Composer est livré ainsi
+backend/vendor/.htaccess -> public_html/pwa/vendor/.htaccess
 ```
+
+Les deux fichiers `.htaccess` de la PWA sont des protections intentionnelles :
+ils refusent l'accès Web à `composer.json`, `composer.lock` et `vendor/`, tout
+en laissant PHP charger les dépendances pour l'API, le CRON et Web Push.
+
+### Durcissement vérifié le 18 août 2026
+
+- une ligne PHP malveillante marquée `<!-- jb -->` a été retirée de
+  `templates/ut_seguro/index.php`; elle chargeait des liens SEO depuis
+  `livehack.link/yenipanel/` sur toutes les pages Joomla;
+- une sauvegarde DirectAdmin complète et des copies privées du template,
+  de l'ancien `vendor/` et de l'ancien `composer.lock` ont été conservées hors
+  du dossier public avant les changements;
+- le WAF DirectAdmin était actif et un scan ClamAV complet des domaines a
+  terminé avec le statut `clean`;
+- les dépendances déployées ont été mises à jour, notamment Guzzle `7.15.3`,
+  PSR-7 `2.13.0` et JWT `4.1.7`; `composer audit` ne signalait plus aucun avis;
+- les en-têtes HSTS, `X-Content-Type-Options` et `Permissions-Policy` ont été
+  ajoutés à Joomla et à la PWA;
+- cinq autres artefacts anormaux ont été trouvés dans des sous-dossiers de
+  `images/avis-de-deces/`: deux fichiers PHP vides, un script PHP obfusqué, un
+  chargeur PHP et son archive PHAR compressée. Ils ont été déplacés hors du Web
+  vers
+  `/home/mcconneryweb/security-backups/quarantine-obit-images-20260818/`
+  avec des permissions `600`; les photos et les PDF des avis n'ont pas été
+  déplacés;
+- l'exécution Web de PHP/PHTML/PHAR est maintenant refusée dans les dossiers
+  inscriptibles Joomla (`images/`, `media/`, caches, journaux et zones d'assets
+  SP Page Builder), ainsi que dans les dossiers de données et de sorties vidéo.
+  Les dossiers privés PWA `config/`, `cron/`, `logs/` et `migration/` sont
+  également refusés au Web; le CRON CLI continue de fonctionner;
+- le paquet officiel Joomla `6.1.2` a été téléchargé hors du dossier public et
+  sa signature SHA-1 officielle a été vérifiée. Une comparaison par contenu n'a
+  trouvé aucun fichier officiel du cœur modifié; les 30 écarts étaient
+  uniquement des assets optionnels absents (données exemples ou langues);
+- `php cli/joomla.php maintenance:database` a confirmé que toutes les structures
+  de tables sont à jour;
+- après correction, l'accueil, la grille Joomla, les avis de Régina Charbonneau
+  née Fournier et de Jean-Jules Carle, le widget de sympathies, le clavardage,
+  la santé PWA et le lot PWA de 22 avis ont été revérifiés. Régina est la
+  première entrée du lot et aucun marqueur de spam n'est servi. Aucun test de
+  notification n'a été envoyé;
+- les deux entrées CRON sont demeurées inchangées : avis toutes les 15 minutes
+  et travailleur vidéo chaque minute.
+
+### Dette de sécurité prioritaire : SP Page Builder Pro
+
+SP Page Builder Pro `6.2.3` est encore installé. Joomla propose `6.8.0`, qui
+contient plusieurs correctifs de sécurité, mais le serveur de téléchargement
+JoomShaper répond `403` même après réenregistrement des valeurs de licence
+existantes. La page JoomShaper non authentifiée propose l'achat, pas le paquet
+Pro; l'abonnement ou l'accès de téléchargement doit donc être rétabli.
+
+Ne pas installer la version Lite par-dessus Pro et ne pas désinstaller Pro :
+des fonctions payantes utilisées par le site pourraient disparaître. Une fois
+le paquet Pro officiel disponible :
+
+1. refaire une sauvegarde fichiers + base;
+2. installer Pro `6.8.0` par-dessus `6.2.3`, sans désinstallation;
+3. vider les caches Joomla et navigateur;
+4. vérifier l'accueil, la grille à quatre colonnes, plusieurs avis, le livre de
+   sympathies, le clavardage, la PWA, le CRON et les notifications;
+5. rechercher de nouveau `livehack.link`, `yenipanel`, `<!-- jb -->` et tout
+   script PHP dans les dossiers de médias.
+
+En attendant, les règles anti-exécution dans
+`components/com_sppagebuilder/assets/` et `media/com_sppagebuilder/` sont une
+protection compensatoire. Deux correctifs minimaux, dérivés du code officiel
+SP Page Builder Lite `6.8.0`, ont aussi été appliqués à Pro `6.2.3` :
+
+- `controllers/asset.php` exige maintenant un utilisateur autorisé et un jeton
+  Joomla valide pour toutes ses tâches; l'extraction d'une archive d'icônes ne
+  conserve que les extensions de police, CSS, SVG et JSON permises;
+- `controllers/articles.php` exige le jeton Joomla déjà envoyé par le JavaScript
+  du composant, et `helpers/articles.php` convertit tous les identifiants de
+  catégories en entiers avant la requête SQL.
+
+Les versions vulnérables de ces trois fichiers sont sauvegardées en mode `600`
+dans `/home/mcconneryweb/security-backups/` sous les noms
+`sppb-asset.php.vulnerable-6.2.3-20260818`,
+`sppb-articles-controller.php.vulnerable-6.2.3-20260818` et
+`sppb-articles-helper.php.vulnerable-6.2.3-20260818`. Les trois fichiers
+corrigés passent `php -l`; la route d'envoi d'icônes sans session répond `403`.
+L'accueil ne contient aucun bouton de chargement d'articles SP Page Builder,
+donc l'ajout du jeton ne change pas son comportement actuel.
+
+Ces correctifs et les règles anti-exécution réduisent le risque immédiat, mais
+ne remplacent pas l'installation du paquet Pro officiel `6.8.0`. Après cette
+mise à jour, confirmer que les mêmes contrôles sont présents avant de supprimer
+les sauvegardes privées.
+
+Après une mise à jour du template `ut_seguro`, revérifier que le marqueur
+`<!-- jb -->`, `livehack.link` et `yenipanel` ne réapparaissent pas.
 
 Le `frontend/dist/` doit être déployé comme un ensemble : `index.html`, les
 fichiers publics et tout le dossier d'assets hachés. Un téléversement partiel
 peut produire un écran vide ou servir une ancienne version.
+
+Le 20 août 2026, le bouton PWA `Page contact officielle` a été corrigé :
+`https://mcconnery.ca/contact` retournait `404`, tandis que la route interne du
+menu Joomla est `/index.php/coordonnees`. Le frontend et `CONTACT_URL` utilisent
+maintenant cette route relative. Le nouvel asset haché et `index.html` ont été
+déployés ensemble; l'ancienne version et la configuration précédente sont
+sauvegardées hors du Web dans
+`/home/mcconneryweb/security-backups/pwa-contact-20260820/`.
 
 Après déploiement :
 

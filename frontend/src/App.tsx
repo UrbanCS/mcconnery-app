@@ -775,7 +775,7 @@ function ContactPage({ config }: { config: PublicConfig | null }) {
         <ContactLine icon={<MapPin size={20} />} label={contact?.address || '206 rue Cartier, Maniwaki (Quebec) J9E 1R3'} />
       </div>
       <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-        <a className="inline-flex min-h-12 items-center justify-center gap-2 rounded bg-action px-5 font-semibold text-white" href={contact?.official_contact_url || 'https://mcconnery.ca/contact'}>
+        <a className="inline-flex min-h-12 items-center justify-center gap-2 rounded bg-action px-5 font-semibold text-white" href="/index.php/coordonnees">
           Page contact officielle
           <ExternalLink size={18} />
         </a>

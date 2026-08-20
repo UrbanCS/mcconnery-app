@@ -33,7 +33,14 @@ public_html/pwa/config/
 public_html/pwa/lib/
 public_html/pwa/vendor/
 public_html/pwa/bootstrap.php
+public_html/pwa/.htaccess
+public_html/pwa/vendor/.htaccess
 ```
+
+Le fichier `backend/.htaccess` doit devenir `public_html/pwa/.htaccess` et
+`backend/vendor/.htaccess` doit rester dans le dossier `vendor/`. Ces règles
+bloquent l'accès public aux fichiers Composer et aux sources des dépendances,
+sans empêcher PHP, l'API ou le CRON de les charger depuis le disque.
 
 4. Creer une base MySQL dans cPanel.
 
@@ -66,6 +73,10 @@ composer install --no-dev --optimize-autoloader
 ```
 
 Si Composer n'est pas disponible sur cPanel, executer cette commande localement puis uploader le dossier `backend/vendor/`.
+
+Après chaque mise à jour, exécuter `composer audit`, vérifier que
+`public_html/pwa/vendor/.htaccess` est toujours présent, puis tester l'API et la
+configuration Push avant de lancer une notification réelle.
 
 9. Generer les cles VAPID:
 
@@ -141,3 +152,18 @@ php cron/check-obituaries.php --seed-only --limit=5000
 - Proteger `notify-test.php` par `NOTIFY_TEST_SECRET`.
 - Lancer les scripts migration seulement depuis CLI ou avec acces cPanel controle.
 - Garder des sauvegardes DB avant chaque import.
+- Refuser tout acces Web a `pwa/config/`, `pwa/cron/`, `pwa/logs/` et
+  `pwa/migration/`; l'execution CLI du CRON n'est pas affectee par une regle
+  Apache `Require all denied`.
+- Refuser l'execution Web de fichiers PHP, PHTML et PHAR dans les dossiers
+  inscriptibles Joomla (`images/`, `media/`, caches, journaux et assets de
+  constructeurs de pages) sans bloquer les JPG, PDF ou autres medias publics.
+- Apres durcissement, verifier que les chemins prives repondent `403` tandis que
+  `/`, les avis de deces et `/pwa/api/health.php` repondent `200`.
+- Ne jamais publier une URL de mise a jour contenant une cle de licence. Si une
+  extension Pro refuse la mise a jour, renouveler l'acces officiel plutot que
+  d'installer une edition Lite susceptible de retirer des fonctions.
+- Pour SP Page Builder, verifier que `asset.uploadCustomIcon` exige une session
+  autorisee et un jeton CSRF, que les archives d'icones sont filtrees par
+  extension, et que `articles.loadMoreArticles` valide le jeton et convertit les
+  identifiants de categories en entiers avant toute requete SQL.

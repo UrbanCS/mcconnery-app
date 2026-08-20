@@ -1,6 +1,9 @@
 node_modules/
 dist/
 vendor/
+!backend/vendor/
+backend/vendor/*
+!backend/vendor/.htaccess
 .env
 .DS_Store
 Thumbs.db
